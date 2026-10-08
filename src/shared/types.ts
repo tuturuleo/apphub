@@ -14,13 +14,23 @@ export type ResourceType =
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
+/** Раздел прав в форме создания токена у провайдера — названия как в его интерфейсе. */
+export interface PermissionGroup {
+  section: string;
+  items: { name: string; level: string }[];
+}
+
+export type InstructionStep = string | { text: string; permissions: PermissionGroup[] };
+
 export interface ProviderInfo {
   id: ProviderId;
   name: string;
   summary: string;
   tokenUrl: string;
   /** Пошаговая инструкция, как получить токен с нужными правами. */
-  steps: string[];
+  steps: InstructionStep[];
+  /** Пояснения под инструкцией: что apphub делает с токеном, ограничения тарифа. */
+  notes: string[];
 }
 
 export interface Connection {

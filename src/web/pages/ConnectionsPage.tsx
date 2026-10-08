@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Connection, ProviderInfo } from "../../shared/types";
+import type { Connection, InstructionStep, PermissionGroup, ProviderInfo } from "../../shared/types";
 import { api } from "../api";
 import { ErrorNote, ExternalLink, Loading, StatusDot } from "../components";
 import { useAsync } from "../useAsync";
@@ -100,10 +100,17 @@ function ProviderCard({
             <li>
               Откройте <ExternalLink url={provider.tokenUrl}>страницу токенов {provider.name}</ExternalLink>.
             </li>
-            {provider.steps.map((s) => (
-              <li key={s}>{s}</li>
+            {provider.steps.map((step, i) => (
+              <Step key={i} step={step} />
             ))}
           </ol>
+          {provider.notes.length > 0 && (
+            <ul className="notes">
+              {provider.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          )}
           <label className="field">
             <span>Токен</span>
             <input
@@ -138,5 +145,37 @@ function ProviderCard({
         </div>
       )}
     </li>
+  );
+}
+
+function Step({ step }: { step: InstructionStep }) {
+  if (typeof step === "string") return <li>{step}</li>;
+  return (
+    <li>
+      {step.text}
+      <div className="perm-groups">
+        {step.permissions.map((group) => (
+          <PermissionBlock key={group.section} group={group} />
+        ))}
+      </div>
+    </li>
+  );
+}
+
+const isWriteLevel = (level: string) => /write|edit/i.test(level);
+
+function PermissionBlock({ group }: { group: PermissionGroup }) {
+  return (
+    <div className="perm-group">
+      <div className="perm-section">{group.section}</div>
+      <ul>
+        {group.items.map((item) => (
+          <li key={item.name}>
+            <span>{item.name}</span>
+            <span className={`perm-level${isWriteLevel(item.level) ? " perm-level-write" : ""}`}>{item.level}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

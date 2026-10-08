@@ -1,5 +1,6 @@
 // Клиент Supabase Management API: организации, проекты, ключи, пулер, настройки авторизации.
 import { ProviderError } from "./errors";
+import { providerFetch } from "./http";
 
 export type SupabaseProjectStatus =
   | "INACTIVE"
@@ -39,7 +40,7 @@ export class Supabase {
   constructor(private token: string) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`https://api.supabase.com/v1${path}`, {
+    const res = await providerFetch("Supabase", `https://api.supabase.com/v1${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -51,7 +52,12 @@ export class Supabase {
       const text = await res.text();
       let message = text;
       try {
-        message = (JSON.parse(text) as { message?: string }).message ?? text;
+        const json = JSON.parse(text) as { message?: string; missing_permissions?: unknown[] };
+        message = json.message ?? text;
+        // Scoped-токен без нужного права: Supabase перечисляет, чего не хватает
+        if (json.missing_permissions?.length) {
+          message += `. Не хватает прав токена: ${json.missing_permissions.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(", ")}`;
+        }
       } catch {
         // не JSON
       }

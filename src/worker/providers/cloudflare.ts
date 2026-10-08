@@ -1,5 +1,6 @@
 // Клиент Cloudflare API v4: аккаунты, поддомен workers.dev, базы D1, деплои Workers.
 import { ProviderError } from "./errors";
+import { providerFetch } from "./http";
 
 interface Envelope<T> {
   success: boolean;
@@ -21,7 +22,7 @@ export class Cloudflare {
   ) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    const res = await providerFetch("Cloudflare", `https://api.cloudflare.com/client/v4${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.token}`,

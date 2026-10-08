@@ -3,6 +3,7 @@ import type { WorkflowRun } from "../../shared/types";
 import { fromBase64, toBase64 } from "../crypto";
 import { sealedBox } from "../sealed-box";
 import { ProviderError } from "./errors";
+import { providerFetch } from "./http";
 
 export interface RepoFile {
   path: string;
@@ -21,7 +22,7 @@ export class GitHub {
   constructor(private token: string) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`https://api.github.com${path}`, {
+    const res = await providerFetch("GitHub", `https://api.github.com${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.token}`,
