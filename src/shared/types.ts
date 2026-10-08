@@ -149,6 +149,8 @@ export interface MonitorResult {
 export interface ProjectStatusReport {
   health: ResourceHealth[];
   runs: WorkflowRun[];
+  /** Активные алерты после сверки со свежим статусом (только в ответе API статуса). */
+  alerts?: ProjectAlert[];
 }
 
 export interface ProjectSummary extends Project {

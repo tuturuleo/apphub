@@ -45,6 +45,8 @@ export function ProjectPage({ id }: { id: string }) {
   const health = new Map(status.data?.health.map((h) => [h.resourceId, h]));
   const actionError = errorMessage(deploy.error ?? provision.error ?? action.error ?? remove.error);
   const statusError = errorMessage(status.error);
+  // Статус возвращает алерты после сверки — они свежее, чем в деталях проекта
+  const alerts = status.data?.alerts ?? details.data.alerts;
 
   function runDeploy() {
     deploy.mutate(undefined, { onSuccess: () => setBoostUntil(Date.now() + DEPLOY_BOOST_MS) });
@@ -93,11 +95,11 @@ export function ProjectPage({ id }: { id: string }) {
         <div className="note">Создаю ресурсы у провайдеров — прогресс в журнале ниже.</div>
       )}
       <ErrorNote message={project.error} />
-      {details.data.alerts.length > 0 && (
+      {alerts.length > 0 && (
         <div className="note note-warn">
           <strong>Проблемы, найденные мониторингом</strong>
           <ul>
-            {details.data.alerts.map((a) => (
+            {alerts.map((a) => (
               <li key={a.key}>
                 {a.message} <span className="muted small">· {timeAgo(a.createdAt)}</span>
                 {a.url && (

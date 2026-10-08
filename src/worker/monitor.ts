@@ -1,6 +1,6 @@
 // Мониторинг проектов: по расписанию (cron) или по кнопке проверяет статусы ресурсов,
 // открывает и закрывает алерты и шлёт в Telegram только изменения — новую проблему или её исправление.
-import type { MonitorResult, ProjectStatusReport, Resource, ResourceKind } from "../shared/types";
+import type { MonitorResult, Project, ProjectStatusReport, Resource, ResourceKind } from "../shared/types";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
 import { Telegram, escapeHtml } from "./providers/telegram";
@@ -68,6 +68,64 @@ export function chunkMessages(parts: string[], limit = TELEGRAM_LIMIT): string[]
   return chunks;
 }
 
+interface Reconciled {
+  opened: number;
+  resolved: number;
+  /** Сообщения для Telegram об изменениях. */
+  messages: string[];
+}
+
+/**
+ * Сверяет активные алерты проекта со свежими статусами: открывает новые проблемы и закрывает исправленные.
+ * Вызывается и мониторингом, и при каждом просмотре статуса — чтобы видимое в интерфейсе и уведомления не расходились.
+ */
+export async function reconcileAlerts(
+  store: Store,
+  project: Project,
+  resources: Resource[],
+  report: ProjectStatusReport,
+): Promise<Reconciled> {
+  const result: Reconciled = { opened: 0, resolved: 0, messages: [] };
+  // Пока ресурсы создаются, их статусы неполные — проблемами их не считаем
+  if (project.status !== "ready") return result;
+
+  const current = deriveAlerts(resources, report);
+  const active = await store.listAlerts(project.id);
+  const title = `<b>${escapeHtml(project.name)}</b>`;
+
+  for (const alert of current) {
+    if (active.some((a) => a.key === alert.key)) continue;
+    if (!(await store.openAlert(project.id, alert))) continue;
+    result.opened++;
+    await store.addEvent(project.id, "error", `Проблема: ${alert.message}`);
+    result.messages.push(`⚠️ ${title}\n${escapeHtml(alert.message)}${link(alert.url)}`);
+  }
+
+  for (const alert of active) {
+    if (current.some((c) => c.key === alert.key)) continue;
+    if (!(await store.resolveAlert(project.id, alert.key))) continue;
+    result.resolved++;
+    await store.addEvent(project.id, "info", `Исправлено: ${alert.message}`);
+    result.messages.push(`✅ ${title}\nИсправлено: ${escapeHtml(alert.message)}`);
+  }
+  return result;
+}
+
+/** Отправляет сообщения в Telegram, если он подключён. true — отправлено. */
+export async function notify(store: Store, messages: string[]): Promise<boolean> {
+  if (messages.length === 0) return false;
+  const telegram = await store.getConnection("telegram").catch(() => null);
+  if (!telegram) return false;
+  try {
+    const bot = new Telegram(telegram.token);
+    for (const chunk of chunkMessages(messages)) await bot.send(telegram.accountId, chunk);
+    return true;
+  } catch (e) {
+    console.error("Не удалось отправить уведомление в Telegram", e);
+    return false;
+  }
+}
+
 export async function runMonitor(store: Store): Promise<MonitorResult> {
   const projects = (await store.listProjects()).filter((p) => p.status === "ready");
   const messages: string[] = [];
@@ -77,42 +135,13 @@ export async function runMonitor(store: Store): Promise<MonitorResult> {
   for (const project of projects) {
     const resources = await store.listResources(project.id);
     const report = await projectStatus(store, resources);
-    const current = deriveAlerts(resources, report);
-    const active = await store.listAlerts(project.id);
-    const title = `<b>${escapeHtml(project.name)}</b>`;
-
-    for (const alert of current) {
-      if (active.some((a) => a.key === alert.key)) continue;
-      if (!(await store.openAlert(project.id, alert))) continue;
-      opened++;
-      await store.addEvent(project.id, "error", `Проблема: ${alert.message}`);
-      messages.push(`⚠️ ${title}\n${escapeHtml(alert.message)}${link(alert.url)}`);
-    }
-
-    for (const alert of active) {
-      if (current.some((c) => c.key === alert.key)) continue;
-      if (!(await store.resolveAlert(project.id, alert.key))) continue;
-      resolved++;
-      await store.addEvent(project.id, "info", `Исправлено: ${alert.message}`);
-      messages.push(`✅ ${title}\nИсправлено: ${escapeHtml(alert.message)}`);
-    }
+    const r = await reconcileAlerts(store, project, resources, report);
+    opened += r.opened;
+    resolved += r.resolved;
+    messages.push(...r.messages);
   }
 
   await store.setMeta(LAST_RUN_KEY, String(Date.now()));
-
-  let notified = false;
-  if (messages.length > 0) {
-    const telegram = await store.getConnection("telegram").catch(() => null);
-    if (telegram) {
-      try {
-        const bot = new Telegram(telegram.token);
-        for (const chunk of chunkMessages(messages)) await bot.send(telegram.accountId, chunk);
-        notified = true;
-      } catch (e) {
-        console.error("Не удалось отправить уведомление в Telegram", e);
-      }
-    }
-  }
-
+  const notified = await notify(store, messages);
   return { checked: projects.length, opened, resolved, notified };
 }

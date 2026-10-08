@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
-import { runMonitor } from "./monitor";
+import { notify, reconcileAlerts, runMonitor } from "./monitor";
 import { PROVIDERS } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
 import {
@@ -57,16 +57,18 @@ async function findProject(store: Store, ref: string): Promise<Project> {
 }
 
 async function projectView(store: Store, project: Project) {
-  const [resources, events, alerts] = await Promise.all([
-    store.listResources(project.id),
-    store.listEvents(project.id),
-    store.listAlerts(project.id),
-  ]);
+  const resources = await store.listResources(project.id);
   const status = await projectStatus(store, resources).catch((e: unknown) => ({
     health: [],
     runs: [],
     error: e instanceof Error ? e.message : String(e),
   }));
+  if (!("error" in status)) {
+    // Как и в интерфейсе: увиденная проблема сразу становится алертом с уведомлением
+    const { messages } = await reconcileAlerts(store, project, resources, status);
+    await notify(store, messages);
+  }
+  const [events, alerts] = await Promise.all([store.listEvents(project.id), store.listAlerts(project.id)]);
   const health = new Map(status.health.map((h) => [h.resourceId, h]));
   return {
     id: project.id,

@@ -4,7 +4,7 @@ import { Store } from "./db";
 import { projectStatus } from "./engine";
 import type { AppEnv } from "./env";
 import { handleMcp } from "./mcp";
-import { getLastRunAt, runMonitor } from "./monitor";
+import { getLastRunAt, notify, reconcileAlerts, runMonitor } from "./monitor";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
@@ -98,7 +98,12 @@ api.get("/projects/:id", async (c) => {
 api.get("/projects/:id/status", async (c) => {
   const store = c.var.store;
   const project = await requireProject(store, c.req.param("id"));
-  return c.json(await projectStatus(store, await store.listResources(project.id)));
+  const resources = await store.listResources(project.id);
+  const report = await projectStatus(store, resources);
+  // Свежий статус сразу сверяем с алертами: увиденное в интерфейсе не должно ждать следующей проверки по cron
+  const { messages } = await reconcileAlerts(store, project, resources, report);
+  if (messages.length > 0) c.executionCtx.waitUntil(notify(store, messages));
+  return c.json({ ...report, alerts: await store.listAlerts(project.id) });
 });
 
 api.post("/projects/:id/deploy", async (c) => {
