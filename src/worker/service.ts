@@ -33,7 +33,13 @@ export async function createProject(store: Store, input: NewProjectInput): Promi
   if (!PROJECT_NAME.test(name)) {
     throw new UserError("Имя: 3–32 символа, латиница в нижнем регистре, цифры и дефис");
   }
-  if (await store.projectNameTaken(name)) throw new UserError("Проект с таким именем уже есть", 409);
+  const existing = await store.getProjectByName(name);
+  if (existing) {
+    // Неудачная попытка, которая ничего не успела создать у провайдеров, не должна занимать имя
+    const abandoned = existing.status === "failed" && (await store.listResources(existing.id)).length === 0;
+    if (!abandoned) throw new UserError("Проект с таким именем уже есть", 409);
+    await store.deleteProject(existing.id);
+  }
 
   const params: Record<string, string> = {};
   for (const field of recipe.fields) {

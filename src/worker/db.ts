@@ -144,10 +144,6 @@ export class Store {
     return row ? toProject(row) : null;
   }
 
-  async projectNameTaken(name: string): Promise<boolean> {
-    return (await this.db.prepare("SELECT 1 FROM projects WHERE name = ?").bind(name).first()) !== null;
-  }
-
   async createProject(p: Pick<Project, "name" | "recipeId" | "params">): Promise<Project> {
     const project: Project = {
       id: crypto.randomUUID(),
