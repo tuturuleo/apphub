@@ -1,0 +1,2 @@
+ENCRYPTION_KEY=base64-32-bytes
+DEV_ALLOW_NO_AUTH=true
