@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "test", "worker-configuration.d.ts"]
+  "include": ["vite.config.ts", "vite-dev-egress.ts", "vitest.config.ts", "test", "worker-configuration.d.ts"]
 }
