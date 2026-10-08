@@ -1,14 +1,15 @@
 import { useState } from "react";
 import type { Connection, InstructionStep, PermissionGroup, ProviderInfo } from "../../shared/types";
-import { api } from "../api";
 import { ErrorNote, ExternalLink, Loading, StatusDot } from "../components";
-import { useAsync } from "../useAsync";
+import { errorMessage, useConnect, useConnections, useDisconnect, useProviders } from "../queries";
 
 export function ConnectionsPage() {
-  const providers = useAsync(() => api.providers(), []);
-  const connections = useAsync(() => api.connections(), []);
+  const providers = useProviders();
+  const connections = useConnections();
 
-  if (providers.error || connections.error) return <ErrorNote message={providers.error ?? connections.error} />;
+  if (providers.error || connections.error) {
+    return <ErrorNote message={errorMessage(providers.error ?? connections.error)} />;
+  }
   if (!providers.data || !connections.data) return <Loading />;
 
   return (
@@ -26,7 +27,6 @@ export function ConnectionsPage() {
             key={p.id}
             provider={p}
             connection={connections.data!.find((c) => c.provider === p.id)}
-            onChange={() => void connections.reload()}
           />
         ))}
         <li className="card card-muted">
@@ -44,38 +44,35 @@ export function ConnectionsPage() {
 function ProviderCard({
   provider,
   connection,
-  onChange,
 }: {
   provider: ProviderInfo;
   connection?: Connection;
-  onChange: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const connect = useConnect();
+  const disconnect = useDisconnect();
 
-  async function save(e: React.FormEvent) {
+  function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.connect(provider.id, token);
-      setToken("");
-      setEditing(false);
-      onChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+    connect.mutate(
+      { provider: provider.id, token },
+      {
+        onSuccess: () => {
+          setToken("");
+          setEditing(false);
+        },
+      },
+    );
   }
 
-  async function disconnect() {
+  function remove() {
     if (!confirm(`Отключить ${provider.name}? Токен будет удалён из apphub.`)) return;
-    await api.disconnect(provider.id);
-    onChange();
+    disconnect.mutate(provider.id);
   }
+
+  const busy = connect.isPending;
+  const error = errorMessage(connect.error ?? disconnect.error);
 
   const showForm = editing || !connection;
 
@@ -135,14 +132,17 @@ function ProviderCard({
           </div>
         </form>
       ) : (
-        <div className="row">
-          <button className="button button-quiet" onClick={() => setEditing(true)}>
-            Заменить токен
-          </button>
-          <button className="button button-quiet" onClick={() => void disconnect()}>
-            Отключить
-          </button>
-        </div>
+        <>
+          <ErrorNote message={errorMessage(disconnect.error)} />
+          <div className="row">
+            <button className="button button-quiet" onClick={() => setEditing(true)}>
+              Заменить токен
+            </button>
+            <button className="button button-quiet" onClick={remove} disabled={disconnect.isPending}>
+              Отключить
+            </button>
+          </div>
+        </>
       )}
     </li>
   );

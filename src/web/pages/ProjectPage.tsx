@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Resource, ResourceActionId, ResourceKind } from "../../shared/types";
-import { api } from "../api";
-import { ErrorNote, ExternalLink, Loading, ProjectStatusBadge, StatusDot, timeAgo } from "../components";
+import { ErrorNote, ExternalLink, Loading, ProjectStatusBadge, StatusDot, UpdatedAt, timeAgo } from "../components";
+import {
+  errorMessage,
+  useDeleteProject,
+  useDeploy,
+  useProject,
+  useProjectStatus,
+  useResourceAction,
+  useStartProvision,
+} from "../queries";
 import { href, navigate } from "../router";
-import { useAsync } from "../useAsync";
 
 const KIND_LABEL: Record<ResourceKind, string> = {
   repo: "Репозиторий",
@@ -15,75 +22,41 @@ const KIND_LABEL: Record<ResourceKind, string> = {
 const RUN_STATE = (status: string, conclusion: string | null) =>
   status !== "completed" ? "pending" : conclusion === "success" ? "ok" : "error";
 
+// Сколько после ручного деплоя опрашивать часто: GitHub создаёт запуск с задержкой
+const DEPLOY_BOOST_MS = 60_000;
+
 export function ProjectPage({ id }: { id: string }) {
-  const details = useAsync(() => api.project(id), [id]);
-  const status = useAsync(() => api.projectStatus(id), [id]);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [deploying, setDeploying] = useState(false);
-  const [busyResource, setBusyResource] = useState<string | null>(null);
-
+  const details = useProject(id);
   const projectStatus = details.data?.project.status;
-  const inProgress = projectStatus === "pending" || projectStatus === "provisioning";
+  // Пока ресурсы создаются, статусы у провайдеров не запрашиваем — включатся сами по завершении
+  const settled = projectStatus === "ready" || projectStatus === "failed";
+  const [boostUntil, setBoostUntil] = useState(0);
+  const status = useProjectStatus(id, { enabled: settled, boostUntil });
 
-  // Пока ресурсы создаются, опрашиваем журнал; по завершении один раз обновляем статусы.
-  useEffect(() => {
-    if (!inProgress) return;
-    const timer = setInterval(() => void details.reload(), 2500);
-    return () => {
-      clearInterval(timer);
-      void status.reload();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inProgress]);
+  const deploy = useDeploy(id);
+  const provision = useStartProvision(id);
+  const action = useResourceAction(id);
+  const remove = useDeleteProject();
 
-  if (details.error) return <ErrorNote message={details.error} />;
+  if (details.error) return <ErrorNote message={errorMessage(details.error)} />;
   if (!details.data) return <Loading />;
 
   const { project, resources, events } = details.data;
   const health = new Map(status.data?.health.map((h) => [h.resourceId, h]));
+  const actionError = errorMessage(deploy.error ?? provision.error ?? action.error ?? remove.error);
+  const statusError = errorMessage(status.error);
 
-  async function startProvision() {
-    setActionError(null);
-    api.provision(id).catch((e: unknown) => setActionError(e instanceof Error ? e.message : String(e)));
-    setTimeout(() => void details.reload(), 500);
+  function runDeploy() {
+    deploy.mutate(undefined, { onSuccess: () => setBoostUntil(Date.now() + DEPLOY_BOOST_MS) });
   }
 
-  async function runAction(resource: Resource, action: ResourceActionId) {
-    setBusyResource(resource.id);
-    setActionError(null);
-    try {
-      await api.resourceAction(id, resource.id, action);
-      await Promise.all([details.reload(), status.reload()]);
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyResource(null);
-    }
+  function runAction(resource: Resource, actionId: ResourceActionId) {
+    action.mutate({ resourceId: resource.id, action: actionId });
   }
 
-  async function deploy() {
-    setDeploying(true);
-    setActionError(null);
-    try {
-      await api.deploy(id);
-      // GitHub создаёт запуск с небольшой задержкой
-      setTimeout(() => void status.reload(), 3000);
-      void details.reload();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDeploying(false);
-    }
-  }
-
-  async function remove() {
+  function removeProject() {
     if (!confirm(`Убрать «${project.name}» из apphub? Репозиторий и сервисы у провайдеров останутся.`)) return;
-    try {
-      await api.deleteProject(id);
-      navigate(href.projects);
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e));
-    }
+    remove.mutate(id, { onSuccess: () => navigate(href.projects) });
   }
 
   return (
@@ -95,18 +68,23 @@ export function ProjectPage({ id }: { id: string }) {
         <h1>{project.name}</h1>
         <ProjectStatusBadge status={project.status} />
         <div className="spacer" />
-        <button className="button button-quiet" onClick={() => void status.reload()} disabled={status.loading}>
-          {status.loading ? "Проверяю…" : "Обновить статус"}
+        {settled && <UpdatedAt at={status.dataUpdatedAt} fetching={status.isFetching} />}
+        <button
+          className="button button-quiet"
+          onClick={() => void status.refetch()}
+          disabled={!settled || status.isFetching}
+        >
+          Обновить
         </button>
-        <button className="button" onClick={() => void deploy()} disabled={deploying || project.status !== "ready"}>
-          {deploying ? "Запускаю…" : "Задеплоить"}
+        <button className="button" onClick={runDeploy} disabled={deploy.isPending || project.status !== "ready"}>
+          {deploy.isPending ? "Запускаю…" : "Задеплоить"}
         </button>
       </div>
 
       {project.status === "pending" && (
         <div className="note">
           Создание ресурсов ещё не запущено.{" "}
-          <button className="link-button" onClick={() => void startProvision()}>
+          <button className="link-button" onClick={() => provision.mutate()} disabled={provision.isPending}>
             Запустить
           </button>
         </div>
@@ -116,7 +94,7 @@ export function ProjectPage({ id }: { id: string }) {
       )}
       <ErrorNote message={project.error} />
       <ErrorNote message={actionError} />
-      {status.error !== project.error && <ErrorNote message={status.error} />}
+      {statusError !== project.error && <ErrorNote message={statusError} />}
 
       <section>
         <h2 className="section-title">Ресурсы</h2>
@@ -131,16 +109,16 @@ export function ProjectPage({ id }: { id: string }) {
                     <span className="kind">{KIND_LABEL[r.kind]}</span>
                     <strong>{r.name}</strong>
                   </div>
-                  <div className="muted small">{h?.summary ?? (status.loading ? "Проверяю…" : "—")}</div>
+                  <div className="muted small">{h?.summary ?? (!settled ? "Создаётся…" : status.isPending ? "Проверяю…" : "—")}</div>
                 </div>
                 <div className="links">
                   {h?.action && (
                     <button
                       className="link-button"
-                      onClick={() => void runAction(r, h.action!.id)}
-                      disabled={busyResource === r.id}
+                      onClick={() => runAction(r, h.action!.id)}
+                      disabled={action.isPending && action.variables?.resourceId === r.id}
                     >
-                      {busyResource === r.id ? "…" : h.action.label}
+                      {action.isPending && action.variables?.resourceId === r.id ? "…" : h.action.label}
                     </button>
                   )}
                   {r.url && <ExternalLink url={r.url}>Открыть</ExternalLink>}
@@ -191,7 +169,7 @@ export function ProjectPage({ id }: { id: string }) {
       </section>
 
       <section className="danger">
-        <button className="button button-quiet" onClick={() => void remove()}>
+        <button className="button button-quiet" onClick={removeProject} disabled={remove.isPending}>
           Убрать из apphub
         </button>
       </section>

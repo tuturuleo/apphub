@@ -635,3 +635,7 @@ select:focus {
     padding-left: 22px;
   }
 }
+
+.updated {
+  white-space: nowrap;
+}

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { HealthState, ProjectStatus } from "../shared/types";
 
 const PROJECT_STATUS: Record<ProjectStatus, { label: string; state: HealthState }> = {
@@ -51,4 +52,22 @@ export function timeAgo(date: string | number): string {
   if (abs < 3600) return rtf.format(Math.round(seconds / 60), "minute");
   if (abs < 86400) return rtf.format(Math.round(seconds / 3600), "hour");
   return rtf.format(Math.round(seconds / 86400), "day");
+}
+
+/** «обновлено 12 с назад» — перерисовывается сама, чтобы было видно, что данные живые. */
+export function UpdatedAt({ at, fetching }: { at: number; fetching: boolean }) {
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (fetching) return <span className="updated muted small">Обновляю…</span>;
+  if (!at) return null;
+  const seconds = Math.round((Date.now() - at) / 1000);
+  return (
+    <span className="updated muted small" title={new Date(at).toLocaleString("ru-RU")}>
+      {seconds < 5 ? "обновлено только что" : `обновлено ${timeAgo(at)}`}
+    </span>
+  );
 }

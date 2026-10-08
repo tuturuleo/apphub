@@ -1,17 +1,16 @@
 import { useState } from "react";
 import type { RecipeInfo } from "../../shared/types";
-import { api } from "../api";
 import { ErrorNote, Loading } from "../components";
+import { errorMessage, useConnections, useCreateProject, useRecipes } from "../queries";
 import { href, navigate } from "../router";
-import { useAsync } from "../useAsync";
 
 const PROVIDER_NAMES: Record<string, string> = { github: "GitHub", cloudflare: "Cloudflare", supabase: "Supabase" };
 
 export function NewProjectPage({ recipeId }: { recipeId?: string }) {
-  const recipes = useAsync(() => api.recipes(), []);
-  const connections = useAsync(() => api.connections(), []);
+  const recipes = useRecipes();
+  const connections = useConnections();
 
-  if (recipes.error || connections.error) return <ErrorNote message={recipes.error ?? connections.error} />;
+  if (recipes.error || connections.error) return <ErrorNote message={errorMessage(recipes.error ?? connections.error)} />;
   if (!recipes.data || !connections.data) return <Loading />;
 
   const connected = new Set(connections.data.map((c) => c.provider));
@@ -56,23 +55,11 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
   const [params, setParams] = useState<Record<string, string>>(() =>
     Object.fromEntries(recipe.fields.map((f) => [f.key, f.default ?? ""])),
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const create = useCreateProject();
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const { id } = await api.createProject(recipe.id, name, params);
-      // Создание ресурсов идёт долгим запросом; страница проекта показывает прогресс по журналу.
-      // Ошибки создания записываются в проект, поэтому здесь их можно не ловить.
-      api.provision(id).catch(() => {});
-      navigate(href.project(id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
+    create.mutate({ recipeId: recipe.id, name, params }, { onSuccess: (id) => navigate(href.project(id)) });
   }
 
   return (
@@ -137,10 +124,10 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
             </ul>
           )}
 
-          <ErrorNote message={error} />
+          <ErrorNote message={errorMessage(create.error)} />
           <div>
-            <button className="button" type="submit" disabled={busy}>
-              {busy ? "Создаю…" : "Создать проект"}
+            <button className="button" type="submit" disabled={create.isPending || create.isSuccess}>
+              {create.isPending || create.isSuccess ? "Создаю…" : "Создать проект"}
             </button>
           </div>
         </form>

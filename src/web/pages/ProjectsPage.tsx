@@ -1,11 +1,10 @@
-import { api } from "../api";
 import { ErrorNote, ExternalLink, Loading, ProjectStatusBadge, timeAgo } from "../components";
+import { errorMessage, useProjects, useRecipes } from "../queries";
 import { href } from "../router";
-import { useAsync } from "../useAsync";
 
 export function ProjectsPage() {
-  const projects = useAsync(() => api.projects(), []);
-  const recipes = useAsync(() => api.recipes(), []);
+  const projects = useProjects();
+  const recipes = useRecipes();
   const recipeName = (id: string) => recipes.data?.find((r) => r.id === id)?.name ?? id;
 
   return (
@@ -17,8 +16,8 @@ export function ProjectsPage() {
         </a>
       </div>
 
-      <ErrorNote message={projects.error} />
-      {projects.loading && !projects.data && <Loading />}
+      <ErrorNote message={errorMessage(projects.error)} />
+      {projects.isPending && <Loading />}
 
       {projects.data?.length === 0 && (
         <div className="empty">
