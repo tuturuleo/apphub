@@ -93,6 +93,53 @@ export class GitHub {
     return commit.sha;
   }
 
+  /** Коммит поверх текущего состояния ветки: добавить/заменить одни файлы, удалить другие. */
+  async commitChanges(
+    fullName: string,
+    branch: string,
+    changes: { upsert: RepoFile[]; remove: string[] },
+    message: string,
+  ): Promise<string> {
+    const parent = await this.headSha(fullName, branch);
+    const parentCommit = await this.request<{ tree: { sha: string } }>(
+      "GET",
+      `/repos/${fullName}/git/commits/${parent}`,
+    );
+    const tree = await this.request<{ sha: string }>("POST", `/repos/${fullName}/git/trees`, {
+      base_tree: parentCommit.tree.sha,
+      tree: [
+        ...changes.upsert.map((f) => ({ path: f.path, mode: "100644", type: "blob", content: f.content })),
+        // sha: null при base_tree удаляет файл
+        ...changes.remove.map((path) => ({ path, mode: "100644", type: "blob", sha: null })),
+      ],
+    });
+    const commit = await this.request<{ sha: string }>("POST", `/repos/${fullName}/git/commits`, {
+      message,
+      tree: tree.sha,
+      parents: [parent],
+    });
+    await this.request("PATCH", `/repos/${fullName}/git/refs/heads/${branch}`, { sha: commit.sha });
+    return commit.sha;
+  }
+
+  async listFiles(fullName: string, branch: string): Promise<{ path: string; size: number; sha: string }[]> {
+    const data = await this.request<{
+      tree: { path: string; type: string; size?: number; sha: string }[];
+      truncated: boolean;
+    }>("GET", `/repos/${fullName}/git/trees/${branch}?recursive=1`);
+    if (data.truncated) throw new Error("Репозиторий слишком большой для чтения через apphub");
+    return data.tree.filter((e) => e.type === "blob").map((e) => ({ path: e.path, size: e.size ?? 0, sha: e.sha }));
+  }
+
+  async readBlob(fullName: string, sha: string): Promise<string> {
+    const blob = await this.request<{ content: string; encoding: string }>(
+      "GET",
+      `/repos/${fullName}/git/blobs/${sha}`,
+    );
+    if (blob.encoding !== "base64") return blob.content;
+    return new TextDecoder().decode(fromBase64(blob.content.replace(/\n/g, "")));
+  }
+
   async setActionsSecret(fullName: string, name: string, value: string): Promise<void> {
     const pk = await this.request<{ key_id: string; key: string }>(
       "GET",

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "apphub": {
+      "type": "http",
+      "url": "http://localhost:5179/mcp"
+    }
+  }
+}

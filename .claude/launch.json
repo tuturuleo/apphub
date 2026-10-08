@@ -4,7 +4,7 @@
     {
       "name": "apphub",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5179", "--strictPort"],
+      "runtimeArgs": ["run", "dev"],
       "port": 5179
     }
   ]

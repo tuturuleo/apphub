@@ -139,6 +139,11 @@ export class Store {
     return row ? toProject(row) : null;
   }
 
+  async getProjectByName(name: string): Promise<Project | null> {
+    const row = await this.db.prepare("SELECT * FROM projects WHERE name = ?").bind(name).first<ProjectRow>();
+    return row ? toProject(row) : null;
+  }
+
   async projectNameTaken(name: string): Promise<boolean> {
     return (await this.db.prepare("SELECT 1 FROM projects WHERE name = ?").bind(name).first()) !== null;
   }

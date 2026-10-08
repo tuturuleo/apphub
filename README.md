@@ -22,11 +22,45 @@
 ```bash
 npm install
 npm run setup:local   # .dev.vars с ключом шифрования + миграции локальной D1
-npm run dev           # http://localhost:5173
+npm run dev           # http://localhost:5179
 ```
 
 Локально проверка доступа отключена (`DEV_ALLOW_NO_AUTH=true` в `.dev.vars`), но подключения и рецепты
 работают с настоящими API GitHub и Cloudflare — проекты создаются по-настоящему.
+
+## MCP: управление через Claude
+
+apphub отдаёт свои операции как MCP-сервер по адресу `/mcp` (Streamable HTTP, без сессий):
+
+| Инструмент | Что делает |
+|---|---|
+| `list_recipes` | рецепты, их параметры и недостающие подключения |
+| `list_connections` | подключённые провайдеры (без токенов) |
+| `list_projects` / `get_project` | проекты; ресурсы со статусами, запуски Actions с логами, журнал |
+| `create_project` | создаёт проект по рецепту и ждёт окончания создания |
+| `get_project_files` | список файлов репозитория проекта или содержимое выбранных |
+| `update_project_files` | один коммит: создать, заменить, удалить файлы; push запускает деплой |
+| `deploy_project` | запускает деплой в GitHub Actions |
+| `wake_resource` | будит уснувший ресурс (Supabase) |
+
+Удалять через MCP нельзя. Токены провайдеров подключаются только в интерфейсе.
+
+**Claude Code, локально.** В репозитории лежит `.mcp.json` с `http://localhost:5179/mcp`: запустите `npm run dev`
+и откройте Claude Code в этой папке — он предложит подключить сервер `apphub`. В другом проекте:
+
+```bash
+claude mcp add --transport http apphub http://localhost:5179/mcp
+```
+
+**Задеплоенный apphub.** `/mcp` закрыт тем же Cloudflare Access. Для Claude Code создайте Access service token
+(Zero Trust → Access → Service Auth), добавьте в приложение политику Service Auth с этим токеном и подключите:
+
+```bash
+claude mcp add --transport http apphub https://apphub.<поддомен>.workers.dev/mcp \
+  --header "CF-Access-Client-Id: <id>" --header "CF-Access-Client-Secret: <secret>"
+```
+
+Коннекторы claude.ai требуют OAuth — это следующий шаг.
 
 ## Деплой своего экземпляра
 
@@ -60,6 +94,8 @@ src/worker/            API на Hono
   providers/           клиенты GitHub и Cloudflare, каталог провайдеров
   recipes/             рецепты и загрузка шаблонов
   engine.ts            выполнение рецептов, статусы ресурсов
+  service.ts           операции с проектами, общие для REST и MCP
+  mcp.ts               MCP-сервер
   sealed-box.ts        шифрование секретов GitHub Actions (libsodium sealed box)
 src/web/               интерфейс на React
 templates/             шаблоны проектов, встраиваются в бандл Worker
@@ -69,13 +105,9 @@ migrations/            схема D1 самого apphub
 ## Дальше
 
 1. **Render (Docker)** — сервисы на любом языке, рецепт «Docker-сервис + Postgres».
-2. **LLM-коннектор** — разворачивать проекты, просто описав задачу модели:
-   - MCP-сервер в этом же Worker (`/mcp`): инструменты `list_recipes`, `create_project`, `get_project`
-     (статусы, журнал, запуски Actions), `deploy_project`, `wake_resource`. Подключается к Claude, Cursor
-     и другим MCP-клиентам; авторизация — OAuth поверх Cloudflare Access. Удаляющих инструментов нет.
-   - Чат в интерфейсе apphub на Claude API с теми же инструментами: подбирает рецепт по описанию,
-     уточняет параметры, создаёт проект, следит за первым деплоем и разбирает лог упавшего workflow.
-   - Затем — правки кода в созданном репозитории: от «развернуть» к «собрать прототип».
+2. **LLM-коннектор**, продолжение:
+   - OAuth для MCP, чтобы подключать apphub коннектором в claude.ai.
+   - Чат в интерфейсе apphub на Claude API (нужен API-ключ): подбирает рецепт, создаёт проект, разбирает упавший деплой.
 3. **Cron и алерты** — периодическая проверка статусов, уведомления в Telegram
    (упал деплой, Supabase уснул, расписание в репо отключено).
 4. Удаление ресурсов у провайдеров вместе с проектом.

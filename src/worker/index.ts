@@ -1,39 +1,46 @@
-import { Hono } from "hono";
-import type { ProjectSummary } from "../shared/types";
+import { Hono, type ErrorHandler } from "hono";
 import { requireAccess } from "./auth";
 import { Store } from "./db";
-import { missingConnections, projectStatus, provision, runResourceAction, triggerDeploy } from "./engine";
+import { projectStatus } from "./engine";
 import type { AppEnv } from "./env";
+import { handleMcp } from "./mcp";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
-import { RECIPES, findRecipe, recipeInfo } from "./recipes";
-
-// Имя идёт в название репо, Worker и базы D1 — берём общий безопасный формат.
-const PROJECT_NAME = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
+import { RECIPES, recipeInfo } from "./recipes";
+import {
+  UserError,
+  createProject,
+  deployProject,
+  listProjectSummaries,
+  provisionProject,
+  requireProject,
+  runAction,
+} from "./service";
 
 type Ctx = { Bindings: AppEnv; Variables: { store: Store } };
 
-const app = new Hono<Ctx>().basePath("/api");
+const onError: ErrorHandler<Ctx> = (err, c) => {
+  if (err instanceof UserError) return c.json({ error: err.message }, err.status);
+  console.error(err);
+  return c.json({ error: err.message }, err instanceof ProviderError ? 502 : 500);
+};
 
-app.use("*", requireAccess);
-app.use("*", async (c, next) => {
+const api = new Hono<Ctx>().basePath("/api");
+
+api.use("*", requireAccess);
+api.use("*", async (c, next) => {
   c.set("store", new Store(c.env));
   await next();
 });
-
-app.onError((err, c) => {
-  console.error(err);
-  const status = err instanceof ProviderError ? 502 : 500;
-  return c.json({ error: err.message }, status);
-});
+api.onError(onError);
 
 // --- провайдеры и подключения ---
 
-app.get("/providers", (c) => c.json(PROVIDERS));
+api.get("/providers", (c) => c.json(PROVIDERS));
 
-app.get("/connections", async (c) => c.json(await c.var.store.listConnections()));
+api.get("/connections", async (c) => c.json(await c.var.store.listConnections()));
 
-app.put("/connections/:provider", async (c) => {
+api.put("/connections/:provider", async (c) => {
   const provider = c.req.param("provider");
   if (!isProviderId(provider)) return c.json({ error: "Неизвестный провайдер" }, 404);
   const { token } = await c.req.json<{ token?: string }>();
@@ -49,7 +56,7 @@ app.put("/connections/:provider", async (c) => {
   return c.json({ ...connection, createdAt: Date.now() });
 });
 
-app.delete("/connections/:provider", async (c) => {
+api.delete("/connections/:provider", async (c) => {
   const provider = c.req.param("provider");
   if (!isProviderId(provider)) return c.json({ error: "Неизвестный провайдер" }, 404);
   await c.var.store.deleteConnection(provider);
@@ -58,103 +65,61 @@ app.delete("/connections/:provider", async (c) => {
 
 // --- рецепты ---
 
-app.get("/recipes", (c) => c.json(RECIPES.map(recipeInfo)));
+api.get("/recipes", (c) => c.json(RECIPES.map(recipeInfo)));
 
 // --- проекты ---
 
-app.get("/projects", async (c) => {
-  const [projects, resources] = await Promise.all([c.var.store.listProjects(), c.var.store.listResources()]);
-  const summaries: ProjectSummary[] = projects.map((p) => ({
-    ...p,
-    links: resources
-      .filter((r) => r.projectId === p.id && r.url && r.kind !== "repo")
-      .map((r) => ({ label: r.kind === "site" ? "Сайт" : "Приложение", url: r.url! })),
-  }));
-  return c.json(summaries);
-});
+api.get("/projects", async (c) => c.json(await listProjectSummaries(c.var.store)));
 
-app.post("/projects", async (c) => {
-  const store = c.var.store;
-  const body = await c.req.json<{ recipeId?: string; name?: string; params?: Record<string, string> }>();
-
-  const recipe = findRecipe(body.recipeId ?? "");
-  if (!recipe) return c.json({ error: "Неизвестный рецепт" }, 400);
-
-  const name = (body.name ?? "").trim().toLowerCase();
-  if (!PROJECT_NAME.test(name)) {
-    return c.json({ error: "Имя: 3–32 символа, латиница в нижнем регистре, цифры и дефис" }, 400);
-  }
-  if (await store.projectNameTaken(name)) return c.json({ error: "Проект с таким именем уже есть" }, 409);
-
-  const params: Record<string, string> = {};
-  for (const field of recipe.fields) {
-    const value = (body.params?.[field.key] ?? field.default ?? "").trim();
-    if (field.required && !value) return c.json({ error: `Не заполнено поле «${field.label}»` }, 400);
-    params[field.key] = value;
-  }
-  const invalid = recipe.validate?.(params);
-  if (invalid) return c.json({ error: invalid }, 400);
-
-  const missing = await missingConnections(store, recipe);
-  if (missing.length > 0) return c.json({ error: `Сначала подключите: ${missing.join(", ")}` }, 400);
-
-  const project = await store.createProject({ name, recipeId: recipe.id, params });
+api.post("/projects", async (c) => {
+  const project = await createProject(c.var.store, await c.req.json());
   return c.json({ id: project.id }, 201);
 });
 
 // Создание ресурсов может занять минуты (Supabase поднимает базу), поэтому идёт отдельным долгим запросом,
 // а интерфейс тем временем опрашивает журнал проекта.
-app.post("/projects/:id/provision", async (c) => {
-  const store = c.var.store;
-  const project = await store.getProject(c.req.param("id"));
-  if (!project) return c.json({ error: "Проект не найден" }, 404);
-  const recipe = findRecipe(project.recipeId);
-  if (!recipe) return c.json({ error: "Рецепт больше не существует" }, 400);
-  if (!(await store.claimProject(project.id))) return c.json({ error: "Создание уже запущено" }, 409);
-
-  await provision(store, recipe, { ...project, status: "provisioning" });
+api.post("/projects/:id/provision", async (c) => {
+  await provisionProject(c.var.store, c.req.param("id"));
   return c.body(null, 204);
 });
 
-app.get("/projects/:id", async (c) => {
+api.get("/projects/:id", async (c) => {
   const store = c.var.store;
-  const project = await store.getProject(c.req.param("id"));
-  if (!project) return c.json({ error: "Проект не найден" }, 404);
+  const project = await requireProject(store, c.req.param("id"));
   const [resources, events] = await Promise.all([store.listResources(project.id), store.listEvents(project.id)]);
   return c.json({ project, resources, events });
 });
 
-app.get("/projects/:id/status", async (c) => {
+api.get("/projects/:id/status", async (c) => {
   const store = c.var.store;
-  const project = await store.getProject(c.req.param("id"));
-  if (!project) return c.json({ error: "Проект не найден" }, 404);
+  const project = await requireProject(store, c.req.param("id"));
   return c.json(await projectStatus(store, await store.listResources(project.id)));
 });
 
-app.post("/projects/:id/deploy", async (c) => {
-  const store = c.var.store;
-  const project = await store.getProject(c.req.param("id"));
-  if (!project) return c.json({ error: "Проект не найден" }, 404);
-  await triggerDeploy(store, await store.listResources(project.id));
-  await store.addEvent(project.id, "info", "Деплой запущен вручную");
+api.post("/projects/:id/deploy", async (c) => {
+  await deployProject(c.var.store, c.req.param("id"));
   return c.body(null, 202);
 });
 
-app.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
-  const store = c.var.store;
-  const resource = await store.getResource(c.req.param("id"), c.req.param("resourceId"));
-  if (!resource) return c.json({ error: "Ресурс не найден" }, 404);
-  const message = await runResourceAction(store, resource, c.req.param("action"));
-  await store.addEvent(resource.projectId, "info", message);
+api.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
+  await runAction(c.var.store, c.req.param("id"), c.req.param("resourceId"), c.req.param("action"));
   return c.body(null, 202);
 });
 
 // Удаляет проект только из apphub: репозиторий, Worker и база у провайдеров остаются.
-app.delete("/projects/:id", async (c) => {
+api.delete("/projects/:id", async (c) => {
   await c.var.store.deleteProject(c.req.param("id"));
   return c.body(null, 204);
 });
 
-app.all("*", (c) => c.json({ error: "Not found" }, 404));
+api.all("*", (c) => c.json({ error: "Not found" }, 404));
+
+// --- корень: API интерфейса и MCP для LLM-клиентов ---
+
+const app = new Hono<Ctx>();
+app.onError(onError);
+app.use("/mcp", requireAccess);
+app.all("/mcp", (c) => handleMcp(c.req.raw, new Store(c.env)));
+app.route("/", api);
 
 export default app;
