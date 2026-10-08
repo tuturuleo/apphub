@@ -95,7 +95,7 @@ function ProviderCard({
         <form className="form" onSubmit={save}>
           <ol className="steps">
             <li>
-              Откройте <ExternalLink url={provider.tokenUrl}>страницу токенов {provider.name}</ExternalLink>.
+              Откройте <ExternalLink url={provider.tokenUrl}>{provider.tokenLinkLabel}</ExternalLink>.
             </li>
             {provider.steps.map((step, i) => (
               <Step key={i} step={step} />

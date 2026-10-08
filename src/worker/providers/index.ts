@@ -3,6 +3,7 @@ import type { Connection, ProviderId, ProviderInfo } from "../../shared/types";
 import { Cloudflare } from "./cloudflare";
 import { GitHub } from "./github";
 import { Supabase } from "./supabase";
+import { Telegram, chatLabel } from "./telegram";
 
 export const PROVIDERS: ProviderInfo[] = [
   {
@@ -10,6 +11,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "GitHub",
     summary: "Репозитории, сборка в Actions, статика на Pages",
     tokenUrl: "https://github.com/settings/personal-access-tokens/new",
+    tokenLinkLabel: "страницу токенов GitHub",
     steps: [
       "Задайте имя токена, например apphub, и срок действия.",
       "Repository access: All repositories — иначе apphub не сможет работать с репозиториями, которые создаст.",
@@ -42,6 +44,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Cloudflare",
     summary: "Workers (сервер на JS/TS), D1 (SQLite), R2, KV, cron",
     tokenUrl: "https://dash.cloudflare.com/profile/api-tokens",
+    tokenLinkLabel: "страницу токенов Cloudflare",
     steps: [
       "Create Token → шаблон «Edit Cloudflare Workers» → Use template.",
       {
@@ -61,6 +64,7 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "Supabase",
     summary: "Postgres, авторизация и готовый API — часто без своего сервера",
     tokenUrl: "https://supabase.com/dashboard/account/tokens",
+    tokenLinkLabel: "страницу токенов Supabase",
     steps: [
       "Если организации ещё нет, сначала создайте её: supabase.com/dashboard/new → Type: Personal, Plan: Free. Проект создавать не нужно — это сделает apphub.",
       "Generate new token, имя — например, apphub.",
@@ -93,6 +97,22 @@ export const PROVIDERS: ProviderInfo[] = [
       "Раздел Infrastructure and delivery не нужен.",
       "Токен остаётся только в apphub: в репозитории уходит строка подключения к конкретной базе, а не он.",
       "На бесплатном тарифе — до 2 активных проектов в организации.",
+    ],
+  },
+  {
+    id: "telegram",
+    name: "Telegram",
+    summary: "Уведомления о проблемах в проектах: упал деплой, уснула база, отключено расписание",
+    tokenUrl: "https://t.me/BotFather",
+    tokenLinkLabel: "@BotFather в Telegram",
+    steps: [
+      "Отправьте /newbot, задайте имя и username бота — BotFather пришлёт токен.",
+      "Откройте своего бота и отправьте ему любое сообщение, например /start — так apphub узнает, куда писать.",
+      "Вставьте токен сюда. В чат придёт тестовое сообщение.",
+    ],
+    notes: [
+      "Чтобы слать уведомления в группу, добавьте бота в группу и напишите там сообщение перед подключением.",
+      "Проверка идёт по расписанию раз в 10 минут, когда apphub задеплоен. Локально — кнопкой «Проверить сейчас».",
     ],
   },
 ];
@@ -133,6 +153,22 @@ export async function verifyConnection(
       const org = orgs[0];
       if (!org) throw new Error("В аккаунте Supabase нет ни одной организации — создайте её в панели Supabase");
       return { provider, label: org.name, accountId: org.slug, meta: {} };
+    }
+    case "telegram": {
+      const bot = new Telegram(token);
+      const me = await bot.me();
+      const chat = await bot.latestChat();
+      if (!chat) {
+        throw new Error(`Напишите боту @${me.username} любое сообщение и нажмите «Подключить» ещё раз`);
+      }
+      const chatId = String(chat.id);
+      await bot.send(chatId, `✅ <b>apphub</b> подключён. Сюда будут приходить уведомления о проблемах в проектах.`);
+      return {
+        provider,
+        label: `@${me.username} → ${chatLabel(chat)}`,
+        accountId: chatId,
+        meta: { bot: me.username },
+      };
     }
   }
 }

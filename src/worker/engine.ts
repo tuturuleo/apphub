@@ -98,8 +98,22 @@ async function checkResource(
   latestRun: WorkflowRun | undefined,
 ): Promise<Omit<ResourceHealth, "resourceId">> {
   switch (r.type) {
-    case "github.repo":
-      return runHealth(latestRun);
+    case "github.repo": {
+      const run = runHealth(latestRun);
+      if (run.state === "error" || !clients.github) return run;
+      // GitHub отключает workflow с расписанием в репо без активности дольше 60 дней
+      const disabled = (await clients.github.client.listWorkflows(r.externalId)).filter(
+        (w) => w.state === "disabled_inactivity",
+      );
+      if (disabled.length > 0) {
+        return {
+          state: "warn",
+          summary: `GitHub отключил ${disabled.map((w) => `«${w.name}»`).join(", ")} из-за неактивности репозитория`,
+          action: { id: "enable_workflows", label: "Включить" },
+        };
+      }
+      return run;
+    }
 
     case "github.pages": {
       if (!clients.github) return { state: "unknown", summary: "GitHub не подключён" };
@@ -163,7 +177,12 @@ export async function projectStatus(store: Store, resources: Resource[]): Promis
       try {
         return { resourceId: r.id, ...(await checkResource(r, clients, runs[0])) };
       } catch (e) {
-        return { resourceId: r.id, state: "error", summary: e instanceof Error ? e.message : String(e) };
+        // Не смогли проверить (сеть, лимиты API) — это не проблема ресурса, алерт не нужен
+        return {
+          resourceId: r.id,
+          state: "unknown",
+          summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}`,
+        };
       }
     }),
   );
@@ -176,6 +195,16 @@ export async function runResourceAction(store: Store, resource: Resource, action
     if (!sb) throw new Error("Supabase не подключён");
     await new Supabase(sb.token).restoreProject(resource.externalId);
     return `Supabase: ${resource.name} просыпается`;
+  }
+  if (resource.type === "github.repo" && action === "enable_workflows") {
+    const gh = await store.getConnection("github");
+    if (!gh) throw new Error("GitHub не подключён");
+    const github = new GitHub(gh.token);
+    const disabled = (await github.listWorkflows(resource.externalId)).filter((w) => w.state === "disabled_inactivity");
+    await Promise.all(disabled.map((w) => github.enableWorkflow(resource.externalId, w.id)));
+    return disabled.length > 0
+      ? `Включены workflow: ${disabled.map((w) => w.name).join(", ")}`
+      : "Отключённых workflow нет";
   }
   throw new Error("Действие недоступно для этого ресурса");
 }

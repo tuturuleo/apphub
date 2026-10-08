@@ -1,5 +1,7 @@
 import type {
   Connection,
+  MonitorResult,
+  MonitorState,
   ProjectDetails,
   ProjectStatusReport,
   ProjectSummary,
@@ -42,6 +44,8 @@ export const api = {
   provision: (id: string) => request<void>("POST", `/projects/${id}/provision`),
   resourceAction: (projectId: string, resourceId: string, action: ResourceActionId) =>
     request<void>("POST", `/projects/${projectId}/resources/${resourceId}/actions/${action}`),
+  monitor: () => request<MonitorState>("GET", "/monitor"),
+  runMonitor: () => request<MonitorResult>("POST", "/monitor/run"),
   deploy: (id: string) => request<void>("POST", `/projects/${id}/deploy`),
   deleteProject: (id: string) => request<void>("DELETE", `/projects/${id}`),
 };

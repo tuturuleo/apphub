@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
+import { runMonitor } from "./monitor";
 import { PROVIDERS } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
 import {
@@ -56,7 +57,11 @@ async function findProject(store: Store, ref: string): Promise<Project> {
 }
 
 async function projectView(store: Store, project: Project) {
-  const [resources, events] = await Promise.all([store.listResources(project.id), store.listEvents(project.id)]);
+  const [resources, events, alerts] = await Promise.all([
+    store.listResources(project.id),
+    store.listEvents(project.id),
+    store.listAlerts(project.id),
+  ]);
   const status = await projectStatus(store, resources).catch((e: unknown) => ({
     health: [],
     runs: [],
@@ -92,6 +97,7 @@ async function projectView(store: Store, project: Project) {
       logUrl: run.url,
     })),
     statusError: "error" in status ? status.error : undefined,
+    alerts: alerts.map((a) => ({ message: a.message, url: a.url, since: new Date(a.createdAt).toISOString() })),
     journal: events.slice(-20).map((e) => `${e.level === "error" ? "ОШИБКА: " : ""}${e.message}`),
   };
 }
@@ -165,6 +171,7 @@ function buildServer(store: Store): McpServer {
           recipe: p.recipeId,
           status: p.status,
           error: p.error,
+          alerts: p.alerts,
           links: p.links,
         })),
       ),
@@ -256,6 +263,18 @@ function buildServer(store: Store): McpServer {
   );
 
   server.registerTool(
+    "check_projects",
+    {
+      title: "Проверить проекты",
+      description:
+        "Проверяет все проекты сейчас: открывает алерты о новых проблемах (упал деплой, ресурс в ошибке, база уснула, " +
+        "отключено расписание), закрывает исправленные и шлёт изменения в Telegram, если он подключён.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    () => run(() => runMonitor(store)),
+  );
+
+  server.registerTool(
     "deploy_project",
     {
       title: "Задеплоить",
@@ -274,16 +293,22 @@ function buildServer(store: Store): McpServer {
   server.registerTool(
     "wake_resource",
     {
-      title: "Разбудить ресурс",
-      description: "Будит уснувший ресурс (например, проект Supabase на паузе). Доступно, если у ресурса health.action = wake.",
-      inputSchema: { project: projectRef, resourceId: z.string().describe("id ресурса из get_project") },
+      title: "Действие над ресурсом",
+      description:
+        "Действие над ресурсом, если get_project показывает health.action: wake — разбудить проект Supabase на паузе, " +
+        "enable_workflows — включить workflow, которые GitHub отключил из-за неактивности.",
+      inputSchema: {
+        project: projectRef,
+        resourceId: z.string().describe("id ресурса из get_project"),
+        action: z.enum(["wake", "enable_workflows"]).optional().describe("по умолчанию wake"),
+      },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    ({ project, resourceId }) =>
+    ({ project, resourceId, action }) =>
       run(async () => {
         const p = await findProject(store, project);
-        await runAction(store, p.id, resourceId, "wake");
-        return { started: true, next: "Пробуждение занимает 1–2 минуты, статус виден в get_project." };
+        await runAction(store, p.id, resourceId, action ?? "wake");
+        return { started: true, next: "Статус обновится в get_project через 1–2 минуты." };
       }),
   );
 

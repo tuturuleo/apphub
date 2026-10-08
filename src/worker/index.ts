@@ -4,6 +4,7 @@ import { Store } from "./db";
 import { projectStatus } from "./engine";
 import type { AppEnv } from "./env";
 import { handleMcp } from "./mcp";
+import { getLastRunAt, runMonitor } from "./monitor";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
@@ -86,8 +87,12 @@ api.post("/projects/:id/provision", async (c) => {
 api.get("/projects/:id", async (c) => {
   const store = c.var.store;
   const project = await requireProject(store, c.req.param("id"));
-  const [resources, events] = await Promise.all([store.listResources(project.id), store.listEvents(project.id)]);
-  return c.json({ project, resources, events });
+  const [resources, events, alerts] = await Promise.all([
+    store.listResources(project.id),
+    store.listEvents(project.id),
+    store.listAlerts(project.id),
+  ]);
+  return c.json({ project, resources, events, alerts });
 });
 
 api.get("/projects/:id/status", async (c) => {
@@ -106,6 +111,17 @@ api.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
   return c.body(null, 202);
 });
 
+// --- мониторинг ---
+
+api.get("/monitor", async (c) => {
+  const store = c.var.store;
+  const [lastRunAt, telegram] = await Promise.all([getLastRunAt(store), store.listConnections()]);
+  return c.json({ lastRunAt, notifications: telegram.some((t) => t.provider === "telegram") });
+});
+
+// Ручная проверка: локально cron не срабатывает, а иногда хочется проверить сразу
+api.post("/monitor/run", async (c) => c.json(await runMonitor(c.var.store)));
+
 // Удаляет проект только из apphub: репозиторий, Worker и база у провайдеров остаются.
 api.delete("/projects/:id", async (c) => {
   await c.var.store.deleteProject(c.req.param("id"));
@@ -122,4 +138,12 @@ app.use("/mcp", requireAccess);
 app.all("/mcp", (c) => handleMcp(c.req.raw, new Store(c.env)));
 app.route("/", api);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Cron Trigger из wrangler.jsonc: проверка проектов и уведомления о проблемах
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(
+      runMonitor(new Store(env)).then((r) => console.log("Мониторинг", r)),
+    );
+  },
+} satisfies ExportedHandler<AppEnv>;

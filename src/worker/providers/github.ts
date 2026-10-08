@@ -191,6 +191,18 @@ export class GitHub {
     }));
   }
 
+  async listWorkflows(fullName: string): Promise<{ id: number; name: string; state: string }[]> {
+    const data = await this.request<{ workflows: { id: number; name: string; state: string }[] }>(
+      "GET",
+      `/repos/${fullName}/actions/workflows`,
+    );
+    return data.workflows;
+  }
+
+  async enableWorkflow(fullName: string, workflowId: number): Promise<void> {
+    await this.request("PUT", `/repos/${fullName}/actions/workflows/${workflowId}/enable`);
+  }
+
   async dispatchWorkflow(fullName: string, workflowFile: string, ref: string): Promise<void> {
     await this.request("POST", `/repos/${fullName}/actions/workflows/${workflowFile}/dispatches`, { ref });
   }

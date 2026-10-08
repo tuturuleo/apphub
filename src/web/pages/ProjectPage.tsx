@@ -93,6 +93,24 @@ export function ProjectPage({ id }: { id: string }) {
         <div className="note">Создаю ресурсы у провайдеров — прогресс в журнале ниже.</div>
       )}
       <ErrorNote message={project.error} />
+      {details.data.alerts.length > 0 && (
+        <div className="note note-warn">
+          <strong>Проблемы, найденные мониторингом</strong>
+          <ul>
+            {details.data.alerts.map((a) => (
+              <li key={a.key}>
+                {a.message} <span className="muted small">· {timeAgo(a.createdAt)}</span>
+                {a.url && (
+                  <>
+                    {" "}
+                    <ExternalLink url={a.url}>Открыть</ExternalLink>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <ErrorNote message={actionError} />
       {statusError !== project.error && <ErrorNote message={statusError} />}
 

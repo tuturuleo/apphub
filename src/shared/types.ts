@@ -1,6 +1,6 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare" | "supabase";
+export type ProviderId = "github" | "cloudflare" | "supabase" | "telegram";
 
 export type ResourceKind = "repo" | "site" | "service" | "database";
 
@@ -27,6 +27,8 @@ export interface ProviderInfo {
   name: string;
   summary: string;
   tokenUrl: string;
+  /** Подпись ссылки на tokenUrl в первом шаге инструкции. */
+  tokenLinkLabel: string;
   /** Пошаговая инструкция, как получить токен с нужными правами. */
   steps: InstructionStep[];
   /** Пояснения под инструкцией: что apphub делает с токеном, ограничения тарифа. */
@@ -96,7 +98,7 @@ export interface ProjectEvent {
 }
 
 /** Действие, которое можно выполнить над ресурсом прямо из apphub. */
-export type ResourceActionId = "wake";
+export type ResourceActionId = "wake" | "enable_workflows";
 
 export interface ResourceHealth {
   resourceId: string;
@@ -116,10 +118,32 @@ export interface WorkflowRun {
   createdAt: string;
 }
 
+/** Активная проблема проекта, найденная мониторингом. */
+export interface ProjectAlert {
+  key: string;
+  message: string;
+  url: string | null;
+  createdAt: number;
+}
+
 export interface ProjectDetails {
   project: Project;
   resources: Resource[];
   events: ProjectEvent[];
+  alerts: ProjectAlert[];
+}
+
+export interface MonitorState {
+  /** Время последней проверки проектов, null — ещё не проверяли. */
+  lastRunAt: number | null;
+  notifications: boolean;
+}
+
+export interface MonitorResult {
+  checked: number;
+  opened: number;
+  resolved: number;
+  notified: boolean;
 }
 
 export interface ProjectStatusReport {
@@ -129,6 +153,7 @@ export interface ProjectStatusReport {
 
 export interface ProjectSummary extends Project {
   links: { label: string; url: string }[];
+  alerts: number;
 }
 
 export interface ApiError {

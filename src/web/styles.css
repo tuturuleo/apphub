@@ -639,3 +639,28 @@ select:focus {
 .updated {
   white-space: nowrap;
 }
+
+.page-head h1:has(+ .muted) {
+  margin-right: 0;
+}
+
+.page-head h1 + .muted {
+  margin-right: auto;
+}
+
+.badge-warn {
+  color: var(--pending);
+}
+
+.note-warn ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.note-warn li + li {
+  margin-top: 4px;
+}
+
+.note-warn a {
+  color: var(--accent);
+}

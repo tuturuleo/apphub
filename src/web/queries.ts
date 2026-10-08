@@ -21,6 +21,7 @@ export const keys = {
   projects: ["projects"] as const,
   project: (id: string) => ["projects", id] as const,
   projectStatus: (id: string) => ["projects", id, "status"] as const,
+  monitor: ["monitor"] as const,
 };
 
 // Частота опроса: пока что-то создаётся или деплоится — часто, в покое — редко.
@@ -144,6 +145,19 @@ export function useDeleteProject() {
       qc.removeQueries({ queryKey: keys.project(id) });
       return qc.invalidateQueries({ queryKey: keys.projects, exact: true });
     },
+  });
+}
+
+// --- мониторинг ---
+
+export const useMonitor = () => useQuery({ queryKey: keys.monitor, queryFn: api.monitor, refetchInterval: IDLE });
+
+export function useRunMonitor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.runMonitor,
+    // Проверка обновила алерты, журналы и статусы — подтягиваем всё
+    onSuccess: () => qc.invalidateQueries(),
   });
 }
 

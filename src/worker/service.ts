@@ -74,9 +74,14 @@ export async function requireProject(store: Store, id: string): Promise<Project>
 }
 
 export async function listProjectSummaries(store: Store): Promise<ProjectSummary[]> {
-  const [projects, resources] = await Promise.all([store.listProjects(), store.listResources()]);
+  const [projects, resources, alerts] = await Promise.all([
+    store.listProjects(),
+    store.listResources(),
+    store.listAlerts(),
+  ]);
   return projects.map((p) => ({
     ...p,
+    alerts: alerts.filter((a) => a.projectId === p.id).length,
     links: resources
       .filter((r) => r.projectId === p.id && r.url && r.kind !== "repo")
       .map((r) => ({ label: r.kind === "site" ? "Сайт" : "Приложение", url: r.url! })),

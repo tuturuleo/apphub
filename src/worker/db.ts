@@ -2,6 +2,7 @@
 import type {
   Connection,
   Project,
+  ProjectAlert,
   ProjectEvent,
   ProjectStatus,
   ProviderId,
@@ -182,6 +183,7 @@ export class Store {
 
   async deleteProject(id: string): Promise<void> {
     await this.db.batch([
+      this.db.prepare("DELETE FROM alerts WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM events WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM resources WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM projects WHERE id = ?").bind(id),
@@ -236,5 +238,56 @@ export class Store {
       .bind(projectId)
       .all<EventRow>();
     return results.map((r) => ({ id: r.id, level: r.level, message: r.message, createdAt: r.created_at }));
+  }
+
+  // --- алерты мониторинга ---
+
+  async listAlerts(projectId?: string): Promise<(ProjectAlert & { projectId: string })[]> {
+    const stmt = projectId
+      ? this.db.prepare("SELECT * FROM alerts WHERE project_id = ? ORDER BY created_at").bind(projectId)
+      : this.db.prepare("SELECT * FROM alerts ORDER BY created_at");
+    const { results } = await stmt.all<{
+      project_id: string;
+      key: string;
+      message: string;
+      url: string | null;
+      created_at: number;
+    }>();
+    return results.map((r) => ({
+      projectId: r.project_id,
+      key: r.key,
+      message: r.message,
+      url: r.url,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /** true, если алерт новый — только тогда о нём уведомляем (защита от параллельных проверок). */
+  async openAlert(projectId: string, alert: Omit<ProjectAlert, "createdAt">): Promise<boolean> {
+    const res = await this.db
+      .prepare("INSERT OR IGNORE INTO alerts (project_id, key, message, url, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(projectId, alert.key, alert.message, alert.url, Date.now())
+      .run();
+    return res.meta.changes === 1;
+  }
+
+  /** true, если алерт действительно был активен. */
+  async resolveAlert(projectId: string, key: string): Promise<boolean> {
+    const res = await this.db.prepare("DELETE FROM alerts WHERE project_id = ? AND key = ?").bind(projectId, key).run();
+    return res.meta.changes === 1;
+  }
+
+  // --- служебные значения ---
+
+  async getMeta(key: string): Promise<string | null> {
+    const row = await this.db.prepare("SELECT value FROM meta WHERE key = ?").bind(key).first<{ value: string }>();
+    return row?.value ?? null;
+  }
+
+  async setMeta(key: string, value: string): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .bind(key, value)
+      .run();
   }
 }
