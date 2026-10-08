@@ -35,6 +35,22 @@ describe("renderTemplate", () => {
     expect(files.find((f) => f.path === ".github/workflows/deploy.yml")!.content).toContain('cron: "0 */6 * * *"');
   });
 
+  it("supabase-site: ключи в config.js, миграции и workflow на месте", () => {
+    const files = renderTemplate("supabase-site", {
+      PROJECT_NAME: "notes",
+      SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+      SUPABASE_KEY: "sb_publishable_xyz",
+    });
+    const config = files.find((f) => f.path === "public/config.js")!.content;
+    expect(config).toContain('SUPABASE_URL = "https://abcdefghijklmnopqrst.supabase.co"');
+    expect(config).toContain('SUPABASE_KEY = "sb_publishable_xyz"');
+    expect(files.some((f) => f.path.startsWith("supabase/migrations/") && f.path.endsWith(".sql"))).toBe(true);
+    expect(files.find((f) => f.path === ".github/workflows/deploy.yml")!.content).toContain(
+      "${{ secrets.SUPABASE_DB_URL }}",
+    );
+    expect(files.map((f) => f.content).join("\n")).not.toMatch(/%%[A-Z0-9_]+%%/);
+  });
+
   it("падает на незаданной переменной", () => {
     expect(() => renderTemplate("sheet-site", { PROJECT_NAME: "x" })).toThrow(/не задана переменная/);
   });

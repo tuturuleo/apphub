@@ -6,6 +6,7 @@ import type {
   ProviderId,
   ProviderInfo,
   RecipeInfo,
+  ResourceActionId,
 } from "../shared/types";
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -38,6 +39,9 @@ export const api = {
   projectStatus: (id: string) => request<ProjectStatusReport>("GET", `/projects/${id}/status`),
   createProject: (recipeId: string, name: string, params: Record<string, string>) =>
     request<{ id: string }>("POST", "/projects", { recipeId, name, params }),
+  provision: (id: string) => request<void>("POST", `/projects/${id}/provision`),
+  resourceAction: (projectId: string, resourceId: string, action: ResourceActionId) =>
+    request<void>("POST", `/projects/${projectId}/resources/${resourceId}/actions/${action}`),
   deploy: (id: string) => request<void>("POST", `/projects/${id}/deploy`),
   deleteProject: (id: string) => request<void>("DELETE", `/projects/${id}`),
 };

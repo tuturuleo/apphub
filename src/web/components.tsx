@@ -1,6 +1,7 @@
 import type { HealthState, ProjectStatus } from "../shared/types";
 
 const PROJECT_STATUS: Record<ProjectStatus, { label: string; state: HealthState }> = {
+  pending: { label: "В очереди", state: "pending" },
   provisioning: { label: "Создаётся", state: "pending" },
   ready: { label: "Готов", state: "ok" },
   failed: { label: "Ошибка", state: "error" },

@@ -147,7 +147,7 @@ export class Store {
     const project: Project = {
       id: crypto.randomUUID(),
       ...p,
-      status: "provisioning",
+      status: "pending",
       error: null,
       createdAt: Date.now(),
     };
@@ -156,6 +156,23 @@ export class Store {
       .bind(project.id, project.name, project.recipeId, JSON.stringify(project.params), project.status, project.createdAt)
       .run();
     return project;
+  }
+
+  /** Переводит проект из pending в provisioning; false, если создание уже кто-то запустил. */
+  async claimProject(id: string): Promise<boolean> {
+    const res = await this.db
+      .prepare("UPDATE projects SET status = 'provisioning' WHERE id = ? AND status = 'pending'")
+      .bind(id)
+      .run();
+    return res.meta.changes === 1;
+  }
+
+  async getResource(projectId: string, id: string): Promise<Resource | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM resources WHERE project_id = ? AND id = ?")
+      .bind(projectId, id)
+      .first<ResourceRow>();
+    return row ? toResource(row) : null;
   }
 
   async setProjectStatus(id: string, status: ProjectStatus, error: string | null = null): Promise<void> {

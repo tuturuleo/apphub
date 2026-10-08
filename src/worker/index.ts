@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { ProjectSummary } from "../shared/types";
 import { requireAccess } from "./auth";
 import { Store } from "./db";
-import { missingConnections, projectStatus, provision, triggerDeploy } from "./engine";
+import { missingConnections, projectStatus, provision, runResourceAction, triggerDeploy } from "./engine";
 import type { AppEnv } from "./env";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
@@ -99,8 +99,21 @@ app.post("/projects", async (c) => {
   if (missing.length > 0) return c.json({ error: `Сначала подключите: ${missing.join(", ")}` }, 400);
 
   const project = await store.createProject({ name, recipeId: recipe.id, params });
-  await provision(store, recipe, project);
   return c.json({ id: project.id }, 201);
+});
+
+// Создание ресурсов может занять минуты (Supabase поднимает базу), поэтому идёт отдельным долгим запросом,
+// а интерфейс тем временем опрашивает журнал проекта.
+app.post("/projects/:id/provision", async (c) => {
+  const store = c.var.store;
+  const project = await store.getProject(c.req.param("id"));
+  if (!project) return c.json({ error: "Проект не найден" }, 404);
+  const recipe = findRecipe(project.recipeId);
+  if (!recipe) return c.json({ error: "Рецепт больше не существует" }, 400);
+  if (!(await store.claimProject(project.id))) return c.json({ error: "Создание уже запущено" }, 409);
+
+  await provision(store, recipe, { ...project, status: "provisioning" });
+  return c.body(null, 204);
 });
 
 app.get("/projects/:id", async (c) => {
@@ -124,6 +137,15 @@ app.post("/projects/:id/deploy", async (c) => {
   if (!project) return c.json({ error: "Проект не найден" }, 404);
   await triggerDeploy(store, await store.listResources(project.id));
   await store.addEvent(project.id, "info", "Деплой запущен вручную");
+  return c.body(null, 202);
+});
+
+app.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
+  const store = c.var.store;
+  const resource = await store.getResource(c.req.param("id"), c.req.param("resourceId"));
+  if (!resource) return c.json({ error: "Ресурс не найден" }, 404);
+  const message = await runResourceAction(store, resource, c.req.param("action"));
+  await store.addEvent(resource.projectId, "info", message);
   return c.body(null, 202);
 });
 

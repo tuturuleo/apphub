@@ -1,11 +1,16 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare";
+export type ProviderId = "github" | "cloudflare" | "supabase";
 
 export type ResourceKind = "repo" | "site" | "service" | "database";
 
 /** Тип ресурса у конкретного провайдера, определяет, как проверять его статус. */
-export type ResourceType = "github.repo" | "github.pages" | "cloudflare.worker" | "cloudflare.d1";
+export type ResourceType =
+  | "github.repo"
+  | "github.pages"
+  | "cloudflare.worker"
+  | "cloudflare.d1"
+  | "supabase.project";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -47,7 +52,8 @@ export interface RecipeInfo {
   notes: string[];
 }
 
-export type ProjectStatus = "provisioning" | "ready" | "failed";
+/** pending — создан, ресурсы ещё не начали создаваться. */
+export type ProjectStatus = "pending" | "provisioning" | "ready" | "failed";
 
 export interface Project {
   id: string;
@@ -79,10 +85,14 @@ export interface ProjectEvent {
   createdAt: number;
 }
 
+/** Действие, которое можно выполнить над ресурсом прямо из apphub. */
+export type ResourceActionId = "wake";
+
 export interface ResourceHealth {
   resourceId: string;
   state: HealthState;
   summary: string;
+  action?: { id: ResourceActionId; label: string };
 }
 
 export interface WorkflowRun {

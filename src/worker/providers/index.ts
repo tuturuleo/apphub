@@ -2,6 +2,7 @@
 import type { Connection, ProviderId, ProviderInfo } from "../../shared/types";
 import { Cloudflare } from "./cloudflare";
 import { GitHub } from "./github";
+import { Supabase } from "./supabase";
 
 export const PROVIDERS: ProviderInfo[] = [
   {
@@ -26,6 +27,17 @@ export const PROVIDERS: ProviderInfo[] = [
       "Добавьте строку Account → D1 → Edit.",
       "Account Resources: ваш аккаунт. Сохраните и скопируйте токен.",
       "Этот же токен кладётся в секреты репозиториев для деплоя из Actions — не давайте ему лишних прав.",
+    ],
+  },
+  {
+    id: "supabase",
+    name: "Supabase",
+    summary: "Postgres, авторизация и готовый API — часто без своего сервера",
+    tokenUrl: "https://supabase.com/dashboard/account/tokens",
+    steps: [
+      "Generate new token, имя — например, apphub.",
+      "Токен остаётся только в apphub: в репозитории уходит строка подключения к конкретной базе, а не он.",
+      "Проекты создаются в первой организации аккаунта. На бесплатном тарифе — до 2 активных проектов.",
     ],
   },
 ];
@@ -60,6 +72,12 @@ export async function verifyConnection(
         );
       }
       return { provider, label: account.name, accountId: account.id, meta: { subdomain } };
+    }
+    case "supabase": {
+      const orgs = await new Supabase(token).organizations();
+      const org = orgs[0];
+      if (!org) throw new Error("В аккаунте Supabase нет ни одной организации — создайте её в панели Supabase");
+      return { provider, label: org.name, accountId: org.slug, meta: {} };
     }
   }
 }

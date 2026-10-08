@@ -5,7 +5,7 @@ import { ErrorNote, Loading } from "../components";
 import { href, navigate } from "../router";
 import { useAsync } from "../useAsync";
 
-const PROVIDER_NAMES: Record<string, string> = { github: "GitHub", cloudflare: "Cloudflare" };
+const PROVIDER_NAMES: Record<string, string> = { github: "GitHub", cloudflare: "Cloudflare", supabase: "Supabase" };
 
 export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   const recipes = useAsync(() => api.recipes(), []);
@@ -65,6 +65,9 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
     setError(null);
     try {
       const { id } = await api.createProject(recipe.id, name, params);
+      // Создание ресурсов идёт долгим запросом; страница проекта показывает прогресс по журналу.
+      // Ошибки создания записываются в проект, поэтому здесь их можно не ловить.
+      api.provision(id).catch(() => {});
       navigate(href.project(id));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -137,7 +140,7 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
           <ErrorNote message={error} />
           <div>
             <button className="button" type="submit" disabled={busy}>
-              {busy ? "Создаю ресурсы…" : "Создать проект"}
+              {busy ? "Создаю…" : "Создать проект"}
             </button>
           </div>
         </form>

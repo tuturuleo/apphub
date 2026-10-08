@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { ResourceKind } from "../../shared/types";
+import { useEffect, useState } from "react";
+import type { Resource, ResourceActionId, ResourceKind } from "../../shared/types";
 import { api } from "../api";
 import { ErrorNote, ExternalLink, Loading, ProjectStatusBadge, StatusDot, timeAgo } from "../components";
 import { href, navigate } from "../router";
@@ -20,12 +20,46 @@ export function ProjectPage({ id }: { id: string }) {
   const status = useAsync(() => api.projectStatus(id), [id]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
+  const [busyResource, setBusyResource] = useState<string | null>(null);
+
+  const projectStatus = details.data?.project.status;
+  const inProgress = projectStatus === "pending" || projectStatus === "provisioning";
+
+  // Пока ресурсы создаются, опрашиваем журнал; по завершении один раз обновляем статусы.
+  useEffect(() => {
+    if (!inProgress) return;
+    const timer = setInterval(() => void details.reload(), 2500);
+    return () => {
+      clearInterval(timer);
+      void status.reload();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inProgress]);
 
   if (details.error) return <ErrorNote message={details.error} />;
   if (!details.data) return <Loading />;
 
   const { project, resources, events } = details.data;
   const health = new Map(status.data?.health.map((h) => [h.resourceId, h]));
+
+  async function startProvision() {
+    setActionError(null);
+    api.provision(id).catch((e: unknown) => setActionError(e instanceof Error ? e.message : String(e)));
+    setTimeout(() => void details.reload(), 500);
+  }
+
+  async function runAction(resource: Resource, action: ResourceActionId) {
+    setBusyResource(resource.id);
+    setActionError(null);
+    try {
+      await api.resourceAction(id, resource.id, action);
+      await Promise.all([details.reload(), status.reload()]);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyResource(null);
+    }
+  }
 
   async function deploy() {
     setDeploying(true);
@@ -69,9 +103,20 @@ export function ProjectPage({ id }: { id: string }) {
         </button>
       </div>
 
+      {project.status === "pending" && (
+        <div className="note">
+          Создание ресурсов ещё не запущено.{" "}
+          <button className="link-button" onClick={() => void startProvision()}>
+            Запустить
+          </button>
+        </div>
+      )}
+      {project.status === "provisioning" && (
+        <div className="note">Создаю ресурсы у провайдеров — прогресс в журнале ниже.</div>
+      )}
       <ErrorNote message={project.error} />
       <ErrorNote message={actionError} />
-      <ErrorNote message={status.error} />
+      {status.error !== project.error && <ErrorNote message={status.error} />}
 
       <section>
         <h2 className="section-title">Ресурсы</h2>
@@ -89,13 +134,22 @@ export function ProjectPage({ id }: { id: string }) {
                   <div className="muted small">{h?.summary ?? (status.loading ? "Проверяю…" : "—")}</div>
                 </div>
                 <div className="links">
+                  {h?.action && (
+                    <button
+                      className="link-button"
+                      onClick={() => void runAction(r, h.action!.id)}
+                      disabled={busyResource === r.id}
+                    >
+                      {busyResource === r.id ? "…" : h.action.label}
+                    </button>
+                  )}
                   {r.url && <ExternalLink url={r.url}>Открыть</ExternalLink>}
                   {r.consoleUrl && <ExternalLink url={r.consoleUrl}>Консоль</ExternalLink>}
                 </div>
               </li>
             );
           })}
-          {resources.length === 0 && <li className="muted">Ресурсов нет</li>}
+          {resources.length === 0 && <li className="resource muted">Ресурсов нет</li>}
         </ul>
       </section>
 

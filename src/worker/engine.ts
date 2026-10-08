@@ -10,15 +10,21 @@ import type {
 import type { Store } from "./db";
 import { Cloudflare } from "./providers/cloudflare";
 import { GitHub } from "./providers/github";
-import type { CloudflareAccess, GitHubAccess, Recipe } from "./recipes/types";
+import { Supabase, type SupabaseProjectStatus } from "./providers/supabase";
+import type { CloudflareAccess, GitHubAccess, Recipe, SupabaseAccess } from "./recipes/types";
 
 interface Clients {
   github: GitHubAccess | null;
   cloudflare: CloudflareAccess | null;
+  supabase: SupabaseAccess | null;
 }
 
 async function loadClients(store: Store): Promise<Clients> {
-  const [gh, cf] = await Promise.all([store.getConnection("github"), store.getConnection("cloudflare")]);
+  const [gh, cf, sb] = await Promise.all([
+    store.getConnection("github"),
+    store.getConnection("cloudflare"),
+    store.getConnection("supabase"),
+  ]);
   return {
     github: gh ? { client: new GitHub(gh.token), login: gh.accountId } : null,
     cloudflare: cf
@@ -29,6 +35,7 @@ async function loadClients(store: Store): Promise<Clients> {
           token: cf.token,
         }
       : null,
+    supabase: sb ? { client: new Supabase(sb.token), organizationSlug: sb.accountId } : null,
   };
 }
 
@@ -38,18 +45,19 @@ export async function missingConnections(store: Store, recipe: Recipe): Promise<
 }
 
 export async function provision(store: Store, recipe: Recipe, project: Project): Promise<void> {
-  const clients = await loadClients(store);
   const require = <T>(value: T | null, provider: ProviderId): T => {
     if (!value) throw new Error(`Не подключён ${provider}`);
     return value;
   };
 
   try {
+    const clients = await loadClients(store);
     await recipe.provision({
       project,
       params: project.params,
       github: () => require(clients.github, "github"),
       cloudflare: () => require(clients.cloudflare, "cloudflare"),
+      supabase: () => require(clients.supabase, "supabase"),
       log: (message) => store.addEvent(project.id, "info", message),
       addResource: (r) => store.addResource({ ...r, projectId: project.id }),
     });
@@ -73,6 +81,16 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
   return `${(n / 1024 / 1024).toFixed(1)} МБ`;
 }
+
+const SUPABASE_PENDING: SupabaseProjectStatus[] = [
+  "COMING_UP",
+  "RESTORING",
+  "RESTARTING",
+  "UPGRADING",
+  "RESIZING",
+  "PAUSING",
+  "GOING_DOWN",
+];
 
 async function checkResource(
   r: Resource,
@@ -109,6 +127,21 @@ async function checkResource(
         summary: `Таблиц: ${db.num_tables ?? 0}, размер ${formatBytes(db.file_size ?? 0)}`,
       };
     }
+
+    case "supabase.project": {
+      if (!clients.supabase) return { state: "unknown", summary: "Supabase не подключён" };
+      const project = await clients.supabase.client.getProject(r.externalId);
+      if (project.status === "ACTIVE_HEALTHY") return { state: "ok", summary: `Работает, регион ${project.region}` };
+      if (project.status === "INACTIVE") {
+        return {
+          state: "warn",
+          summary: "На паузе: бесплатные проекты засыпают после недели без активности",
+          action: { id: "wake", label: "Разбудить" },
+        };
+      }
+      if (SUPABASE_PENDING.includes(project.status)) return { state: "pending", summary: project.status };
+      return { state: "error", summary: project.status };
+    }
   }
 }
 
@@ -135,6 +168,16 @@ export async function projectStatus(store: Store, resources: Resource[]): Promis
     }),
   );
   return { health, runs };
+}
+
+export async function runResourceAction(store: Store, resource: Resource, action: string): Promise<string> {
+  if (resource.type === "supabase.project" && action === "wake") {
+    const sb = await store.getConnection("supabase");
+    if (!sb) throw new Error("Supabase не подключён");
+    await new Supabase(sb.token).restoreProject(resource.externalId);
+    return `Supabase: ${resource.name} просыпается`;
+  }
+  throw new Error("Действие недоступно для этого ресурса");
 }
 
 export async function triggerDeploy(store: Store, resources: Resource[]): Promise<void> {
