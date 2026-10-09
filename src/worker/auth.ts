@@ -119,17 +119,27 @@ async function accessValid(c: Ctx): Promise<boolean> {
   }
 }
 
+/**
+ * Вход отключён только для локальной разработки: переменная работает лишь на localhost, поэтому случайно
+ * выставленная в облаке она apphub не откроет.
+ */
+function devNoAuth(c: Ctx): boolean {
+  if (c.env.DEV_ALLOW_NO_AUTH !== "true") return false;
+  const host = new URL(c.req.url).hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
 export async function authState(c: Ctx) {
   return {
     configured: (await passkeyCount(c.env)) > 0,
     authenticated: await isAuthenticated(c),
-    devNoAuth: c.env.DEV_ALLOW_NO_AUTH === "true",
+    devNoAuth: devNoAuth(c),
     setupCodeSet: !!c.env.SETUP_CODE,
   };
 }
 
 async function isAuthenticated(c: Ctx): Promise<boolean> {
-  if (c.env.DEV_ALLOW_NO_AUTH === "true") return true;
+  if (devNoAuth(c)) return true;
   const bearer = c.req.header("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer && (await tokenValid(c.env, bearer.trim()))) return true;
   if (await sessionValid(c.env, getCookie(c, SESSION_COOKIE))) return true;
@@ -156,7 +166,7 @@ export const requireAuth = createMiddleware<{ Bindings: AppEnv; Variables: any }
   if (!(await isAuthenticated(c))) return c.json({ error: "Нужно войти", auth: true }, 401);
 
   const viaCookie =
-    !c.req.header("Authorization") && c.env.DEV_ALLOW_NO_AUTH !== "true" && !!getCookie(c, SESSION_COOKIE);
+    !c.req.header("Authorization") && !devNoAuth(c) && !!getCookie(c, SESSION_COOKIE);
   if (viaCookie && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("Origin");
     if (!origin || origin !== (await publicOrigin(c)).origin) {
@@ -238,7 +248,7 @@ async function takeChallenge(env: AppEnv, id: string, kind: string): Promise<str
  */
 export async function registrationOptions(c: Ctx, setupCode: string | undefined) {
   const hasPasskeys = (await passkeyCount(c.env)) > 0;
-  const loggedIn = hasPasskeys && (await isAuthenticated(c)) && c.env.DEV_ALLOW_NO_AUTH !== "true";
+  const loggedIn = hasPasskeys && (await isAuthenticated(c)) && !devNoAuth(c);
   if (!loggedIn) {
     if (!c.env.SETUP_CODE) throw new AuthError("Не задан код установки (секрет SETUP_CODE)", 403);
     if (!setupCode || !safeEqual(setupCode.trim(), c.env.SETUP_CODE))

@@ -13,9 +13,33 @@ export function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-async function importKey(keyB64: string): Promise<CryptoKey> {
-  const raw = fromBase64(keyB64);
-  if (raw.length !== 32) throw new Error("ENCRYPTION_KEY должен быть 32 байта в base64");
+const keys = new Map<string, Promise<CryptoKey>>();
+
+/**
+ * Ключ: 32 байта в base64 (openssl rand -base64 32) — как есть; любая другая строка от 32 символов — фраза,
+ * из неё ключ получается через SHA-256. Так ключ можно задать и в форме кнопки «Deploy to Cloudflare».
+ */
+function importKey(secret: string): Promise<CryptoKey> {
+  let key = keys.get(secret);
+  if (!key) {
+    key = deriveKey(secret);
+    keys.set(secret, key);
+  }
+  return key;
+}
+
+async function deriveKey(secret: string): Promise<CryptoKey> {
+  let raw: Uint8Array<ArrayBuffer> | null = null;
+  try {
+    const decoded = fromBase64(secret.trim());
+    if (decoded.length === 32) raw = decoded;
+  } catch {
+    // не base64 — значит, фраза
+  }
+  if (!raw) {
+    if (secret.length < 32) throw new Error("ENCRYPTION_KEY: нужно 32 байта в base64 или фраза от 32 символов");
+    raw = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`apphub:${secret}`)));
+  }
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 

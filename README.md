@@ -6,6 +6,11 @@
 
 Сам apphub тоже живёт бесплатно: Cloudflare Worker + D1.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tuturuleo/apphub)
+
+Каждый разворачивает **свой** apphub в своём аккаунте Cloudflare: токены ваших провайдеров хранятся только
+в вашей базе D1, зашифрованные вашим ключом. Через чужие серверы они не проходят.
+
 ## Рецепты
 
 | Рецепт | Что создаётся | Провайдеры |
@@ -73,24 +78,35 @@ claude mcp add --transport http apphub https://apphub.<поддомен>.workers
 
 Коннекторы claude.ai требуют OAuth — это следующий шаг.
 
-## Деплой своего экземпляра
+## Свой apphub
+
+**Кнопкой (проще всего).** Нажмите «Deploy to Cloudflare» выше. Cloudflare скопирует репозиторий в ваш GitHub,
+создаст базу D1 и спросит два секрета:
+
+- `ENCRYPTION_KEY` — ключ шифрования токенов: вывод `openssl rand -base64 32` или любая случайная фраза
+  от 32 символов. Не меняйте его потом — сохранённые токены перестанут читаться.
+- `SETUP_CODE` — код установки для первого passkey. Сохраните его в менеджере паролей.
+
+Сборка сама применит миграции базы (`npm run deploy`). Дальше каждый push в ваш репозиторий — новый деплой.
+
+**Вручную:**
 
 ```bash
+npx wrangler login
 npx wrangler d1 create apphub                    # database_id → wrangler.jsonc
-npx wrangler d1 migrations apply DB --remote
 openssl rand -base64 32 | npx wrangler secret put ENCRYPTION_KEY
-npm run deploy
-```
-
-Код установки задайте до первого открытия — без него зарегистрировать владельца нельзя:
-
-```bash
 openssl rand -base64 18 | tee /dev/stderr | npx wrangler secret put SETUP_CODE   # сохраните код
+npm run deploy                                   # сборка, миграции, деплой
 ```
 
-Откройте apphub, введите код и создайте passkey (Touch ID, Face ID, Windows Hello или ключ). Дальше вход — только
-по passkey. Тот же код нужен, чтобы добавить passkey на новом устройстве или восстановить доступ; сменить его —
-снова `wrangler secret put SETUP_CODE`.
+**Первый вход.** Откройте адрес Worker, введите код установки и создайте passkey (Touch ID, Face ID,
+Windows Hello или ключ). Дальше вход — только по passkey. Код нужен снова, чтобы добавить passkey на новом
+устройстве или на другом адресе (прокси). Забыли код — задайте новый: `npx wrangler secret put SETUP_CODE`;
+passkey и данные не пострадают.
+
+**Потом:** подключите провайдеров на странице «Подключения», откройте «Проекты» — apphub добавит туда себя.
+Для Claude Code создайте токен на странице «Безопасность». Если `workers.dev` у вас не открывается — там же
+«Доступ без VPN».
 
 ## apphub в своих проектах
 

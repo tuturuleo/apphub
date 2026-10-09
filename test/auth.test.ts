@@ -157,6 +157,12 @@ describe("авторизация", () => {
     );
   });
 
+  it("DEV_ALLOW_NO_AUTH не открывает apphub нигде, кроме localhost", async () => {
+    env.DEV_ALLOW_NO_AUTH = "true";
+    expect((await call("/projects")).status).toBe(401);
+    expect((await app().request("http://localhost:5179/api/projects", {}, env)).status).toBe(200);
+  });
+
   it("последний passkey удалить нельзя", async () => {
     await env.DB.prepare(
       "INSERT INTO auth_passkeys (id, public_key, counter, rp_id, name, created_at) VALUES ('k1', 'pk', 0, 'x', 'n', 0)",

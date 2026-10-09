@@ -20,3 +20,12 @@ describe("encrypt/decrypt", () => {
     await expect(encrypt("x", randomBytes(16).toString("base64"))).rejects.toThrow(/32 байта/);
   });
 });
+
+describe("ключ-фраза", () => {
+  it("шифрует фразой от 32 символов и не принимает короткую", async () => {
+    const { encrypt, decrypt } = await import("../src/worker/crypto");
+    const phrase = "correct horse battery staple and more words";
+    expect(await decrypt(await encrypt("token", phrase), phrase)).toBe("token");
+    await expect(encrypt("token", "short")).rejects.toThrow(/32/);
+  });
+});

@@ -4,3 +4,4 @@ dist
 .dev.vars
 *.tsbuildinfo
 .DS_Store
+.skills.json

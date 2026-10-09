@@ -8,10 +8,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "vite build && npm run db:migrate && wrangler deploy",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "cf-typegen": "wrangler types --strict-vars=false"
+    "cf-typegen": "wrangler types --strict-vars=false",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.1",
@@ -42,5 +43,18 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.3",
     "wrangler": "^4.149.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "ENCRYPTION_KEY": {
+        "description": "Ключ шифрования токенов провайдеров: вывод `openssl rand -base64 32` или любая случайная фраза от 32 символов. **Не меняйте после первого подключения** — сохранённые токены перестанут читаться."
+      },
+      "SETUP_CODE": {
+        "description": "Код установки: нужен, чтобы создать первый passkey владельца и добавить passkey на новом устройстве. Придумайте длинный и сохраните в менеджере паролей."
+      },
+      "DB": {
+        "description": "База D1 apphub: подключения (токены зашифрованы), проекты, ресурсы, журнал."
+      }
+    }
   }
 }

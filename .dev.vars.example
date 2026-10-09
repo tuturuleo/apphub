@@ -1,4 +1,4 @@
-ENCRYPTION_KEY=base64-32-bytes
-DEV_ALLOW_NO_AUTH=true
-# Код установки: нужен для первого passkey и восстановления доступа (вход на localhost — только при DEV_ALLOW_NO_AUTH=false)
-SETUP_CODE=change-me
+# Секреты apphub. Кнопка «Deploy to Cloudflare» спросит их при развёртывании.
+# Локально `npm run setup:local` создаст .dev.vars сам (с отключённым входом для localhost).
+ENCRYPTION_KEY=replace-with-openssl-rand-base64-32
+SETUP_CODE=replace-with-your-setup-code
