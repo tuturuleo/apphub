@@ -48,6 +48,7 @@ export interface AuthState {
   authenticated: boolean;
   devNoAuth: boolean;
   setupCodeSet: boolean;
+  encryptionKeyOk: boolean;
 }
 
 export interface SecurityInfo {

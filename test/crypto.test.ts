@@ -17,7 +17,7 @@ describe("encrypt/decrypt", () => {
   });
 
   it("отклоняет ключ неправильной длины", async () => {
-    await expect(encrypt("x", randomBytes(16).toString("base64"))).rejects.toThrow(/32 байта/);
+    await expect(encrypt("x", randomBytes(16).toString("base64"))).rejects.toThrow(/ENCRYPTION_KEY/);
   });
 });
 
@@ -27,5 +27,15 @@ describe("ключ-фраза", () => {
     const phrase = "correct horse battery staple and more words";
     expect(await decrypt(await encrypt("token", phrase), phrase)).toBe("token");
     await expect(encrypt("token", "short")).rejects.toThrow(/32/);
+  });
+});
+
+describe("примеры вместо секретов", () => {
+  it("ключ-пример и пустой ключ не принимаются", async () => {
+    const { encrypt, encryptionKeyOk } = await import("../src/worker/crypto");
+    expect(encryptionKeyOk("replace-with-openssl-rand-base64-32")).toBe(false);
+    expect(encryptionKeyOk("")).toBe(false);
+    expect(encryptionKeyOk(randomBytes(32).toString("base64"))).toBe(true);
+    await expect(encrypt("x", "replace-with-openssl-rand-base64-32")).rejects.toThrow(/примером/);
   });
 });

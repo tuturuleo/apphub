@@ -28,18 +28,28 @@ function importKey(secret: string): Promise<CryptoKey> {
   return key;
 }
 
-async function deriveKey(secret: string): Promise<CryptoKey> {
-  let raw: Uint8Array<ArrayBuffer> | null = null;
+function base64Key(secret: string): Uint8Array<ArrayBuffer> | null {
   try {
     const decoded = fromBase64(secret.trim());
-    if (decoded.length === 32) raw = decoded;
+    return decoded.length === 32 ? decoded : null;
   } catch {
-    // не base64 — значит, фраза
+    return null; // не base64 — значит, фраза
   }
-  if (!raw) {
-    if (secret.length < 32) throw new Error("ENCRYPTION_KEY: нужно 32 байта в base64 или фраза от 32 символов");
-    raw = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`apphub:${secret}`)));
+}
+
+/** Годится ли ключ: 32 байта в base64 или фраза от 32 символов — но не пример из .dev.vars.example. */
+export function encryptionKeyOk(secret: string | undefined): boolean {
+  if (!secret || /replace|change-me|example/i.test(secret)) return false;
+  return !!base64Key(secret) || secret.length >= 32;
+}
+
+async function deriveKey(secret: string): Promise<CryptoKey> {
+  if (!encryptionKeyOk(secret)) {
+    throw new Error("ENCRYPTION_KEY не задан, остался примером или короче 32 символов — задайте случайный ключ");
   }
+  const raw =
+    base64Key(secret) ??
+    new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`apphub:${secret}`)));
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 

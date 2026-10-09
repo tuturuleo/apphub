@@ -163,6 +163,16 @@ describe("авторизация", () => {
     expect((await app().request("http://localhost:5179/api/projects", {}, env)).status).toBe(200);
   });
 
+  it("код установки-пример или короткий — регистрация закрыта", async () => {
+    for (const code of ["replace-with-your-setup-code", "short"]) {
+      env.SETUP_CODE = code;
+      const res = await call("/auth/register/options", { method: "POST", body: JSON.stringify({ setupCode: code }) });
+      expect(res.status).toBe(403);
+      const state = (await (await call("/auth/state")).json()) as { setupCodeSet: boolean };
+      expect(state.setupCodeSet).toBe(false);
+    }
+  });
+
   it("последний passkey удалить нельзя", async () => {
     await env.DB.prepare(
       "INSERT INTO auth_passkeys (id, public_key, counter, rp_id, name, created_at) VALUES ('k1', 'pk', 0, 'x', 'n', 0)",

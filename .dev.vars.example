@@ -1,4 +1,6 @@
-# Секреты apphub. Кнопка «Deploy to Cloudflare» спросит их при развёртывании.
-# Локально `npm run setup:local` создаст .dev.vars сам (с отключённым входом для localhost).
-ENCRYPTION_KEY=replace-with-openssl-rand-base64-32
-SETUP_CODE=replace-with-your-setup-code
+# Секреты AppHub. Кнопка «Deploy to Cloudflare» спросит их при развёртывании — придумайте свои значения.
+# ENCRYPTION_KEY: вывод `openssl rand -base64 32` или случайная фраза от 32 символов. Не меняйте потом.
+# SETUP_CODE: код установки для первого passkey, от 12 символов. Сохраните в менеджере паролей.
+# Локально `npm run setup:local` создаст .dev.vars сам.
+ENCRYPTION_KEY=
+SETUP_CODE=

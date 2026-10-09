@@ -12,7 +12,7 @@ import type { Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { fromBase64, toBase64 } from "./crypto";
+import { encryptionKeyOk, fromBase64, toBase64 } from "./crypto";
 import { Store } from "./db";
 import type { AppEnv } from "./env";
 import { proxySecret } from "./proxy";
@@ -129,12 +129,21 @@ function devNoAuth(c: Ctx): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
+/** Пример из .dev.vars.example или слишком простое значение — такой код установки не годится. */
+const MIN_SETUP_CODE = 12;
+function setupCode(env: AppEnv): string | null {
+  const code = env.SETUP_CODE?.trim();
+  if (!code || code.length < MIN_SETUP_CODE || /replace|change-me|example/i.test(code)) return null;
+  return code;
+}
+
 export async function authState(c: Ctx) {
   return {
     configured: (await passkeyCount(c.env)) > 0,
     authenticated: await isAuthenticated(c),
     devNoAuth: devNoAuth(c),
-    setupCodeSet: !!c.env.SETUP_CODE,
+    setupCodeSet: !!setupCode(c.env),
+    encryptionKeyOk: encryptionKeyOk(c.env.ENCRYPTION_KEY),
   };
 }
 
@@ -165,8 +174,7 @@ export const requireAuth = createMiddleware<{ Bindings: AppEnv; Variables: any }
   if (PUBLIC_PATHS.has(c.req.path)) return next();
   if (!(await isAuthenticated(c))) return c.json({ error: "Нужно войти", auth: true }, 401);
 
-  const viaCookie =
-    !c.req.header("Authorization") && !devNoAuth(c) && !!getCookie(c, SESSION_COOKIE);
+  const viaCookie = !c.req.header("Authorization") && !devNoAuth(c) && !!getCookie(c, SESSION_COOKIE);
   if (viaCookie && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("Origin");
     if (!origin || origin !== (await publicOrigin(c)).origin) {
@@ -246,13 +254,18 @@ async function takeChallenge(env: AppEnv, id: string, kind: string): Promise<str
  * Регистрация passkey. Первый — и восстановление на новом адресе или после потери — только с кодом установки;
  * дополнительный при уже открытой сессии — без кода.
  */
-export async function registrationOptions(c: Ctx, setupCode: string | undefined) {
+export async function registrationOptions(c: Ctx, given: string | undefined) {
   const hasPasskeys = (await passkeyCount(c.env)) > 0;
   const loggedIn = hasPasskeys && (await isAuthenticated(c)) && !devNoAuth(c);
   if (!loggedIn) {
-    if (!c.env.SETUP_CODE) throw new AuthError("Не задан код установки (секрет SETUP_CODE)", 403);
-    if (!setupCode || !safeEqual(setupCode.trim(), c.env.SETUP_CODE))
-      throw new AuthError("Неверный код установки", 403);
+    const expected = setupCode(c.env);
+    if (!expected) {
+      throw new AuthError(
+        `Код установки (секрет SETUP_CODE) не задан, остался примером или короче ${MIN_SETUP_CODE} символов`,
+        403,
+      );
+    }
+    if (!given || !safeEqual(given.trim(), expected)) throw new AuthError("Неверный код установки", 403);
   }
   const { rpID } = await publicOrigin(c);
   const existing = await c.env.DB.prepare("SELECT id, transports FROM auth_passkeys WHERE rp_id = ?")

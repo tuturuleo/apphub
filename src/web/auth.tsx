@@ -55,10 +55,24 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (state.isPending) return <Loading />;
   if (state.error) return <ErrorNote message={errorMessage(state.error)} />;
   if (state.data.authenticated) return <>{children}</>;
-  return <LoginScreen configured={state.data.configured} setupCodeSet={state.data.setupCodeSet} />;
+  return (
+    <LoginScreen
+      configured={state.data.configured}
+      setupCodeSet={state.data.setupCodeSet}
+      encryptionKeyOk={state.data.encryptionKeyOk}
+    />
+  );
 }
 
-function LoginScreen({ configured, setupCodeSet }: { configured: boolean; setupCodeSet: boolean }) {
+function LoginScreen({
+  configured,
+  setupCodeSet,
+  encryptionKeyOk,
+}: {
+  configured: boolean;
+  setupCodeSet: boolean;
+  encryptionKeyOk: boolean;
+}) {
   const qc = useQueryClient();
   const [mode, setMode] = useState<"login" | "setup">(configured ? "login" : "setup");
   const [code, setCode] = useState("");
@@ -114,7 +128,15 @@ function LoginScreen({ configured, setupCodeSet }: { configured: boolean; setupC
           </p>
           {!setupCodeSet && (
             <p className="note note-error">
-              Код установки не задан. Задайте его: <code>npx wrangler secret put SETUP_CODE</code>
+              Код установки не задан, остался примером или слишком короткий (меньше 12 символов). Задайте свой:{" "}
+              <code>npx wrangler secret put SETUP_CODE</code> или в панели Cloudflare: Worker → Settings → Variables and
+              Secrets.
+            </p>
+          )}
+          {!encryptionKeyOk && (
+            <p className="note note-error">
+              Ключ шифрования ENCRYPTION_KEY не задан или остался примером — подключения провайдеров не сохранятся.
+              Задайте случайный: <code>openssl rand -base64 32 | npx wrangler secret put ENCRYPTION_KEY</code>
             </p>
           )}
           <label className="field">
