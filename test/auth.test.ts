@@ -128,6 +128,16 @@ describe("авторизация", () => {
     expect(((await res.json()) as { options: { rp: { id: string } } }).options.rp.id).toBe("hub-proxy.onrender.com");
   });
 
+  it("кривой X-Apphub-Host не мешает взять X-Forwarded-Host", async () => {
+    env.PROXY_SECRET = "proxy-secret";
+    const res = await call("/auth/register/options", {
+      method: "POST",
+      headers: { "X-Apphub-Host": "{host}", "X-Forwarded-Host": "hub.onrender.com", "X-Apphub-Proxy": "proxy-secret" },
+      body: JSON.stringify({ setupCode: "correct-horse" }),
+    });
+    expect(((await res.json()) as { options: { rp: { id: string } } }).options.rp.id).toBe("hub.onrender.com");
+  });
+
   it("адрес за прокси принимается только с секретом прокси", async () => {
     env.PROXY_SECRET = "proxy-secret";
     const options = async (headers: Record<string, string>) =>
