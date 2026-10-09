@@ -109,8 +109,7 @@ export const PROVIDERS: ProviderInfo[] = [
     tokenUrl: "https://dashboard.render.com/u/settings#api-keys",
     tokenLinkLabel: "настройки аккаунта Render",
     steps: [
-      "Если GitHub ещё не подключён к Render: Account Settings → Git Providers → GitHub, при установке приложения Render выберите All repositories — иначе Render не увидит репозитории, которые создаст apphub.",
-      "Если уже подключён, проверьте доступ в GitHub: Settings → Applications → Installed GitHub Apps → Render → Configure → Repository access: All repositories.",
+      "Account Settings → Account Security → Git Deployment Credentials → Add credential → GitHub, авторизуйте свой аккаунт и дайте доступ ко всем репозиториям (All repositories). Вход через GitHub (Login Methods) для этого не годится — Render не увидит репозитории.",
       "Account Settings → API Keys → Create API Key, скопируйте ключ сюда.",
     ],
     notes: [

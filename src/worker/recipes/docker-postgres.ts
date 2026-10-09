@@ -28,8 +28,9 @@ async function createServiceWhenRepoVisible<T>(ctx: ProvisionContext, create: ()
       if (!unfetchable) throw e;
       if (attempt >= REPO_VISIBLE_ATTEMPTS) {
         throw new Error(
-          "Render не видит репозиторий. Откройте в GitHub Settings → Applications → Render → Configure и выберите " +
-            "Repository access: All repositories, затем создайте проект заново.",
+          "Render не видит репозиторий. В Render: Account Settings → Account Security → Git Deployment Credentials " +
+            "→ Add credential → GitHub (вход через GitHub для деплоя не годится); в GitHub у приложения Render — " +
+            "All repositories. Затем удалите этот проект и создайте заново.",
         );
       }
       if (attempt === 1) await ctx.log("Render ещё не видит новый репозиторий — жду…");
