@@ -14,7 +14,7 @@ import {
   parsePostgresUrl,
   removeFromCatalog,
 } from "./catalog";
-import { runChat, type ChatMessage } from "./chat";
+import { runChat, type ChatMessage, chatModels } from "./chat";
 import { bindToProject, releaseBinding } from "./sharing";
 import { connect, disconnect, dropWiresOf, isConsumer, outputsOf, reapplyWires } from "./wiring";
 import { handleMcp } from "./mcp";
@@ -305,10 +305,11 @@ api.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
 
 // --- ассистент ---
 
+api.get("/chat/models", async (c) => c.json(await chatModels(c.var.store)));
 api.post("/chat", async (c) => {
-  const { messages } = await c.req.json<{ messages?: ChatMessage[] }>();
+  const { messages, model } = await c.req.json<{ messages?: ChatMessage[]; model?: string }>();
   if (!Array.isArray(messages) || messages.length === 0) return c.json({ error: "Пустая переписка" }, 400);
-  return c.json(await runChat(c.var.store, messages));
+  return c.json(await runChat(c.var.store, messages, { model }));
 });
 
 // --- настройки ---

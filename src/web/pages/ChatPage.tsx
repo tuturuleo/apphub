@@ -1,12 +1,29 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { ChatBlock, ChatMessage } from "../../shared/types";
 import { api } from "../api";
 import { ErrorNote, Loading } from "../components";
-import { errorMessage, useConnections } from "../queries";
+import { errorMessage } from "../queries";
 import { href } from "../router";
 
 const STORAGE_KEY = "apphub.chat";
+const MODEL_KEY = "apphub.chat.model";
+
+function loadModel(): string {
+  try {
+    return localStorage.getItem(MODEL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveModel(id: string) {
+  try {
+    localStorage.setItem(MODEL_KEY, id);
+  } catch {
+    // без хранилища выбор просто не запомнится
+  }
+}
 
 const TOOL_LABEL: Record<string, string> = {
   list_recipes: "смотрю рецепты",
@@ -19,6 +36,14 @@ const TOOL_LABEL: Record<string, string> = {
   check_projects: "проверяю все проекты",
   deploy_project: "запускаю деплой",
   wake_resource: "действие над ресурсом",
+  list_resources: "смотрю каталог ресурсов",
+  get_limits: "смотрю лимиты",
+  get_resource_logs: "читаю логи",
+  restart_proxy: "перезапускаю прокси",
+  add_project_resource: "создаю ресурс",
+  bind_resource: "привязываю ресурс",
+  connect_resources: "связываю ресурсы",
+  list_drive_sheets: "смотрю таблицы",
 };
 
 // Переписка переживает переходы между страницами, но не закрытие вкладки
@@ -41,9 +66,11 @@ function saveHistory(messages: ChatMessage[]) {
 const blocks = (m: ChatMessage): ChatBlock[] =>
   typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content;
 
-const URL_RE = /(https?:\/\/[^\s)]+)/g;
+const URL_RE = /(https?:\/\/[^\s)*`]+)/g;
+// Модели отвечают в markdown: показываем **жирный** и `код`, остальное — как есть
+const MARK_RE = /(\*\*[^*\n]+\*\*|`[^`\n]+`)/g;
 
-function RichText({ text }: { text: string }) {
+function Links({ text }: { text: string }) {
   return (
     <>
       {text.split(URL_RE).map((part, i) =>
@@ -59,6 +86,22 @@ function RichText({ text }: { text: string }) {
   );
 }
 
+function RichText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(MARK_RE).map((part, i) => {
+        if (i % 2 === 0) return <Links key={i} text={part} />;
+        if (part.startsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
+        return (
+          <strong key={i}>
+            <Links text={part.slice(2, -2)} />
+          </strong>
+        );
+      })}
+    </>
+  );
+}
+
 function toolSubject(input: Record<string, unknown>): string {
   const value = input.project ?? input.name ?? input.recipe;
   return typeof value === "string" ? ` · ${value}` : "";
@@ -68,14 +111,18 @@ function toolSubject(input: Record<string, unknown>): string {
 const isToolResults = (m: ChatMessage) => m.role === "user" && blocks(m).every((b) => b.type === "tool_result");
 
 export function ChatPage() {
-  const connections = useConnections();
+  const models = useQuery({ queryKey: ["chat", "models"], queryFn: api.chatModels });
   const qc = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>(loadHistory);
   const [draft, setDraft] = useState("");
+  const [picked, setPicked] = useState(loadModel);
   const endRef = useRef<HTMLDivElement>(null);
+  // Сохранённая модель могла исчезнуть из каталога — тогда первая доступная
+  const model = models.data?.find((m) => m.id === picked)?.id ?? models.data?.[0]?.id ?? "";
+  const groups = [...new Set(models.data?.map((m) => m.group))];
 
   const send = useMutation({
-    mutationFn: (history: ChatMessage[]) => api.chat(history),
+    mutationFn: (history: ChatMessage[]) => api.chat(history, model),
     onSuccess: (result) => {
       setMessages(result.messages);
       // Ассистент мог создать проект, задеплоить, закоммитить — обновляем всё
@@ -97,9 +144,9 @@ export function ChatPage() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, send.isPending]);
 
-  if (connections.error) return <ErrorNote message={errorMessage(connections.error)} />;
-  if (!connections.data) return <Loading />;
-  const connected = connections.data.some((c) => c.provider === "anthropic");
+  if (models.error) return <ErrorNote message={errorMessage(models.error)} />;
+  if (!models.data) return <Loading />;
+  const connected = models.data.length > 0;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -115,17 +162,44 @@ export function ChatPage() {
     <>
       <div className="page-head">
         <h1>Ассистент</h1>
-        {messages.length > 0 && (
-          <button className="button button-quiet" onClick={() => setMessages([])} disabled={send.isPending}>
-            Новый разговор
-          </button>
-        )}
+        <div className="row">
+          {connected && (
+            <select
+              className="chat-model"
+              value={model}
+              onChange={(e) => {
+                setPicked(e.target.value);
+                saveModel(e.target.value);
+              }}
+              disabled={send.isPending}
+              aria-label="Модель ассистента"
+            >
+              {groups.map((g) => (
+                <optgroup key={g} label={g}>
+                  {models
+                    .data!.filter((m) => m.group === g)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                        {m.tools === false ? " (без инструментов)" : ""}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+          {messages.length > 0 && (
+            <button className="button button-quiet" onClick={() => setMessages([])} disabled={send.isPending}>
+              Новый разговор
+            </button>
+          )}
+        </div>
       </div>
 
       {!connected ? (
         <div className="note">
-          Ассистенту нужен ключ Claude API. <a href={href.connections}>Подключить</a>. Без ключа AppHub доступен из
-          Claude Code через MCP.
+          Нет доступных моделей: Workers AI недоступен, а LLM-провайдеры не подключены.{" "}
+          <a href={href.connections}>Подключить</a>. AppHub также доступен из Claude Code через MCP.
         </div>
       ) : (
         <>
@@ -133,7 +207,8 @@ export function ChatPage() {
             <p className="muted lead">
               Опишите, что хотите сделать: «разверни сайт с базой для списка покупок», «почему упал деплой у notes?»,
               «добавь в todo-clock тёмную тему». Ассистент работает с проектами теми же средствами, что и интерфейс, и
-              спросит согласия перед изменениями.
+              спросит согласия перед изменениями. Бесплатные модели хорошо справляются с вопросами и простыми
+              действиями; для сборки проекта по описанию сильнее Claude — через Claude Code и MCP.
             </p>
           )}
 
@@ -163,7 +238,7 @@ export function ChatPage() {
                 </div>
               ),
             )}
-            {send.isPending && <div className="chat-msg chat-assistant chat-pending">Claude работает…</div>}
+            {send.isPending && <div className="chat-msg chat-assistant chat-pending">Ассистент работает…</div>}
             <div ref={endRef} />
           </div>
 

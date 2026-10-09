@@ -14,6 +14,8 @@ export function formatAmount(value: number, unit: LimitItem["unit"]): string {
       return `${value} мин`;
     case "requests":
       return value.toLocaleString("ru-RU");
+    case "neurons":
+      return `${value.toLocaleString("ru-RU")} нейронов`;
     default:
       return String(value);
   }

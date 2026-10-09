@@ -53,6 +53,8 @@ export function formatAmount(value: number, unit: LimitItem["unit"]): string {
       return `${value} мин`;
     case "requests":
       return value.toLocaleString("ru-RU");
+    case "neurons":
+      return `${value.toLocaleString("ru-RU")} нейронов`;
     default:
       return String(value);
   }
@@ -188,6 +190,46 @@ function githubLimits(c: Account, suffix: string): LimitItem[] {
   ];
 }
 
+/** Бесплатные LLM: потребление через API не узнать — показываем лимит и ссылку на страницу потребления. */
+const LLM_LIMITS: Partial<Record<string, { limit: number; label: string; note: string; consoleUrl: string }>> = {
+  groq: {
+    limit: 1000,
+    label: "Groq: запросов в день на модель",
+    note: "Плюс около 200 тыс. токенов в день на модель — обычно кончаются раньше запросов.",
+    consoleUrl: "https://console.groq.com/settings/limits",
+  },
+  openrouter: {
+    limit: 50,
+    label: "OpenRouter: запросов в день к бесплатным моделям",
+    note: "1000 в день, если на счету когда-либо было от $10. Бесплатные модели бывают перегружены.",
+    consoleUrl: "https://openrouter.ai/activity",
+  },
+  nvidia: {
+    limit: 10000,
+    label: "NVIDIA: запросов в день на модель",
+    note: "Около 40 запросов в минуту.",
+    consoleUrl: "https://build.nvidia.com/models",
+  },
+};
+
+function llmLimits(c: Account, suffix: string): LimitItem[] {
+  const spec = LLM_LIMITS[c.provider];
+  if (!spec) return [];
+  return [
+    item({
+      key: "llm.requests",
+      provider: c.provider,
+      connectionId: c.id,
+      label: `${spec.label}${suffix}`,
+      used: null,
+      limit: spec.limit,
+      unit: "requests",
+      note: spec.note,
+      consoleUrl: spec.consoleUrl,
+    }),
+  ];
+}
+
 /** Лимиты по каждому подключённому аккаунту. Аккаунт, который не отвечает, не ломает остальные. */
 export async function collectLimits(store: Store): Promise<LimitItem[]> {
   const connections = await store.listConnections();
@@ -200,13 +242,33 @@ export async function collectLimits(store: Store): Promise<LimitItem[]> {
       cloudflare: cloudflareLimits,
       render: renderLimits,
       github: githubLimits,
+      groq: llmLimits,
+      openrouter: llmLimits,
+      nvidia: llmLimits,
     };
     const fetcher = fetchers[meta.provider];
     if (!fetcher) return [];
     const account = await store.getConnectionById(meta.id).catch(() => null);
     return account ? fetcher(account, suffix) : [];
   });
-  return (await Promise.all(tasks)).flat();
+  const items = (await Promise.all(tasks)).flat();
+  if (store.env.AI) {
+    // Workers AI — в аккаунте, где живёт сам AppHub; общий лимит ассистента и других Worker-ов аккаунта
+    items.push(
+      item({
+        key: "workers-ai.neurons",
+        provider: "cloudflare",
+        connectionId: "self",
+        label: "Workers AI: нейронов в день (ассистент AppHub без ключей)",
+        used: null,
+        limit: 10000,
+        unit: "neurons",
+        note: "Примерно 100–200 ответов в день; сбрасывается в 03:00 по Москве. Общий для всего аккаунта Cloudflare.",
+        consoleUrl: "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
+      }),
+    );
+  }
+  return items;
 }
 
 /** Лимиты выбранных аккаунтов, которые не дадут создать проект по рецепту. */

@@ -1,8 +1,20 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "google" | "telegram" | "anthropic";
+export type ProviderId =
+  | "github"
+  | "cloudflare"
+  | "supabase"
+  | "render"
+  | "google"
+  | "telegram"
+  | "anthropic"
+  | "groq"
+  | "openrouter"
+  | "mistral"
+  | "nvidia"
+  | "openai_compat";
 
-export type ResourceKind = "repo" | "site" | "service" | "database" | "data" | "bot";
+export type ResourceKind = "repo" | "site" | "service" | "database" | "data" | "bot" | "llm";
 
 /** Тип ресурса у конкретного провайдера, определяет, как проверять его статус. */
 export type ResourceType =
@@ -14,7 +26,8 @@ export type ResourceType =
   | "render.service"
   | "google.sheet"
   | "postgres.external"
-  | "telegram.bot";
+  | "telegram.bot"
+  | "llm.model";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -39,6 +52,8 @@ export interface ProviderInfo {
   notes: string[];
   /** Секрет — многострочный текст (JSON-ключ), а не короткий токен. */
   secretMultiline?: boolean;
+  /** Группа на странице «Подключения»: платформы для проектов, LLM или служебные. */
+  group?: "llm";
   /** Можно подключить несколько аккаунтов. Служебные подключения AppHub (уведомления, ассистент) — по одному. */
   multiAccount: boolean;
 }
@@ -250,7 +265,9 @@ export type LimitKey =
   | "cloudflare.workers"
   | "render.hours"
   | "cloudflare.requests"
-  | "github.actions";
+  | "github.actions"
+  | "workers-ai.neurons"
+  | "llm.requests";
 
 export type LimitState = "ok" | "warn" | "full" | "info";
 
@@ -263,7 +280,7 @@ export interface LimitItem {
   /** null — потребление через API не узнать, показываем только лимит. */
   used: number | null;
   limit: number;
-  unit: "" | "bytes" | "hours" | "minutes" | "requests";
+  unit: "" | "bytes" | "hours" | "minutes" | "requests" | "neurons";
   state: LimitState;
   note: string | null;
   /** Кто занимает (например, имена проектов Supabase). */

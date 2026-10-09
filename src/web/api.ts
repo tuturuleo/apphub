@@ -124,7 +124,9 @@ export const api = {
   provision: (id: string) => request<void>("POST", `/projects/${id}/provision`),
   resourceAction: (projectId: string, resourceId: string, action: ResourceActionId) =>
     request<void>("POST", `/projects/${projectId}/resources/${resourceId}/actions/${action}`),
-  chat: (messages: ChatMessage[]) => request<ChatResult>("POST", "/chat", { messages }),
+  chat: (messages: ChatMessage[], model: string) => request<ChatResult>("POST", "/chat", { messages, model }),
+  chatModels: () =>
+    request<{ id: string; label: string; group: string; tools: boolean | null }[]>("GET", "/chat/models"),
   googleSheets: (connectionId: string) =>
     request<{ serviceAccount: string; sheets: { id: string; name: string; modifiedTime: string; url: string }[] }>(
       "GET",

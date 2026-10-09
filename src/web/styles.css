@@ -1058,3 +1058,8 @@ code {
   flex: 1;
   min-width: 200px;
 }
+
+.chat-model {
+  width: auto;
+  max-width: 320px;
+}

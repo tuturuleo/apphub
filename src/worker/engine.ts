@@ -13,6 +13,7 @@ import { ProviderError } from "./providers/errors";
 import { Cloudflare } from "./providers/cloudflare";
 import { GitHub } from "./providers/github";
 import { GoogleDrive } from "./providers/google";
+import { isLlmProvider, listModels, llmCredentials } from "./llm";
 import { Render, type RenderDeploy, type RenderDeployStatus } from "./providers/render";
 import { Supabase, type SupabaseProjectStatus } from "./providers/supabase";
 import { Telegram } from "./providers/telegram";
@@ -51,7 +52,9 @@ export class Clients {
   }
 
   private async build<P extends ManagedProvider>(provider: P, connectionId?: string | null): Promise<Access[P] | null> {
-    const c = connectionId ? await this.store.getConnectionById(connectionId) : await this.store.defaultConnection(provider);
+    const c = connectionId
+      ? await this.store.getConnectionById(connectionId)
+      : await this.store.defaultConnection(provider);
     if (!c || c.provider !== provider) return null;
     const access = {
       github: () => ({ connectionId: c.id, client: new GitHub(c.token), login: c.accountId }),
@@ -79,7 +82,9 @@ export class Clients {
 /** Провайдер ресурса по его типу: github.repo → github. У внешних ресурсов провайдера нет. */
 export function resourceProvider(type: ResourceType): ManagedProvider | null {
   const provider = type.split(".")[0];
-  return provider in { github: 1, cloudflare: 1, supabase: 1, render: 1, google: 1 } ? (provider as ManagedProvider) : null;
+  return provider in { github: 1, cloudflare: 1, supabase: 1, render: 1, google: 1 }
+    ? (provider as ManagedProvider)
+    : null;
 }
 
 /** Подключения, нужные рецепту при этих параметрах. */
@@ -225,6 +230,23 @@ const DISCONNECTED = { state: "unknown" as const, summary: "Аккаунт ре�
 async function checkResource(r: Resource, ctx: CheckContext): Promise<Omit<ResourceHealth, "resourceId">> {
   const { clients } = ctx;
   switch (r.type) {
+    case "llm.model": {
+      const c = r.connectionId ? await ctx.store.getConnectionById(r.connectionId) : null;
+      if (!c || !isLlmProvider(c.provider)) return DISCONNECTED;
+      const { baseUrl, key } = llmCredentials(c);
+      try {
+        const models = await listModels(c.provider, baseUrl, key);
+        return models.some((m) => m.id === r.externalId)
+          ? { state: "ok", summary: "Модель доступна" }
+          : { state: "warn", summary: "Модели больше нет в списке провайдера — выберите другую" };
+      } catch (e) {
+        if (e instanceof ProviderError && (e.status === 401 || e.status === 403)) {
+          return { state: "error", summary: "Ключ отклонён — замените его в «Подключениях»" };
+        }
+        throw e;
+      }
+    }
+
     case "telegram.bot": {
       const token = await ctx.store.getResourceSecret(r.id);
       if (!token) return { state: "unknown", summary: "Нет токена бота" };
@@ -385,9 +407,7 @@ export async function projectStatus(store: Store, resources: Resource[]): Promis
 
   const ctx: CheckContext = { store, clients, latestGithubRun: githubRuns[0], renderDeploys };
   const health = await Promise.all(resources.map((r) => resourceHealth(r, ctx)));
-  const runs = [...githubRuns, ...renderRuns]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 8);
+  const runs = [...githubRuns, ...renderRuns].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8);
   return { health, runs };
 }
 
@@ -396,19 +416,26 @@ async function resourceHealth(r: Resource, ctx: CheckContext): Promise<ResourceH
     return { resourceId: r.id, ...(await checkResource(r, ctx)) };
   } catch (e) {
     // Не смогли проверить (сеть, лимиты API) — это не проблема ресурса, алерт не нужен
-    return { resourceId: r.id, state: "unknown", summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      resourceId: r.id,
+      state: "unknown",
+      summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }
 
 /** Статусы произвольного набора ресурсов — для каталога, без запусков сборок. */
 export async function resourcesHealth(store: Store, resources: Resource[]): Promise<ResourceHealth[]> {
-  const ctx: CheckContext = { store, clients: new Clients(store), latestGithubRun: undefined, renderDeploys: new Map() };
+  const ctx: CheckContext = {
+    store,
+    clients: new Clients(store),
+    latestGithubRun: undefined,
+    renderDeploys: new Map(),
+  };
   // Без истории запусков репозиторий и Render честно не оценить — для них короткая проверка доступа
   return Promise.all(
     resources.map((r) =>
-      r.type === "github.repo" || r.type === "render.service"
-        ? accessHealth(r, ctx)
-        : resourceHealth(r, ctx),
+      r.type === "github.repo" || r.type === "render.service" ? accessHealth(r, ctx) : resourceHealth(r, ctx),
     ),
   );
 }
@@ -430,7 +457,11 @@ async function accessHealth(r: Resource, ctx: CheckContext): Promise<ResourceHea
     if (e instanceof ProviderError && e.status === 404) {
       return { resourceId: r.id, state: "error", summary: "Не найден у провайдера — удалён вне AppHub?" };
     }
-    return { resourceId: r.id, state: "unknown", summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      resourceId: r.id,
+      state: "unknown",
+      summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }
 
@@ -506,6 +537,7 @@ export async function deleteAtProvider(store: Store, r: Resource): Promise<void>
       case "google.sheet":
       case "postgres.external":
       case "telegram.bot":
+      case "llm.model":
         return; // данные, серверы и боты пользователя не удаляем никогда
       case "github.repo":
         return await need(await clients.github(r.connectionId), "GitHub").client.deleteRepo(r.externalId);

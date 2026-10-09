@@ -29,10 +29,28 @@ export function ConnectionsPage() {
         зашифрованным.
       </p>
       <ul className="card-list card-list-wide">
-        {providers.data.map((p) => (
-          <ProviderCard key={p.id} provider={p} accounts={connections.data!.filter((c) => c.provider === p.id)} />
-        ))}
+        {providers.data
+          .filter((p) => !p.group)
+          .map((p) => (
+            <ProviderCard key={p.id} provider={p} accounts={connections.data!.filter((c) => c.provider === p.id)} />
+          ))}
       </ul>
+
+      <section>
+        <h2 className="section-title">Бесплатные LLM</h2>
+        <p className="muted">
+          Модели для ассистента AppHub и для ваших проектов. Ассистент работает и без них — на Workers AI вашего
+          аккаунта Cloudflare (около 100–200 ответов в день). Ключи провайдеров дают больше моделей и запросов. После
+          подключения откройте «Ресурсы» → «Найти в аккаунте» и добавьте нужные модели.
+        </p>
+        <ul className="card-list card-list-wide">
+          {providers.data
+            .filter((p) => p.group === "llm")
+            .map((p) => (
+              <ProviderCard key={p.id} provider={p} accounts={connections.data!.filter((c) => c.provider === p.id)} />
+            ))}
+        </ul>
+      </section>
     </>
   );
 }

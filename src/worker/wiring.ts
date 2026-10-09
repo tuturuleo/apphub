@@ -4,6 +4,7 @@
 import type { BoundResource, Resource, ResourceOutput, ResourceType, Wire } from "../shared/types";
 import type { Store } from "./db";
 import { Clients } from "./engine";
+import { isLlmProvider, llmCredentials } from "./llm";
 import { UserError } from "./service";
 
 interface OutputSpec {
@@ -23,6 +24,11 @@ const OUTPUTS: Partial<Record<ResourceType, OutputSpec[]>> = {
   "render.service": [{ key: "SERVICE_URL", label: "Адрес сервиса", secret: false }],
   "cloudflare.worker": [{ key: "SERVICE_URL", label: "Адрес сервиса", secret: false }],
   "github.pages": [{ key: "SITE_URL", label: "Адрес сайта", secret: false }],
+  "llm.model": [
+    { key: "LLM_BASE_URL", label: "Адрес OpenAI-совместимого API", secret: false },
+    { key: "LLM_API_KEY", label: "Ключ API провайдера", secret: true },
+    { key: "LLM_MODEL", label: "Имя модели", secret: false },
+  ],
 };
 
 /** Ресурсы, в которые можно записывать переменные. */
@@ -84,6 +90,16 @@ async function resolveOutput(store: Store, r: BoundResource, key: string, projec
     case "SITE_URL":
       if (!r.url) throw new UserError(`У «${r.name}» нет адреса`);
       return r.url;
+    case "LLM_BASE_URL":
+    case "LLM_API_KEY": {
+      // Ключ — ключ аккаунта провайдера: проект получает тот же доступ, что и AppHub
+      const c = r.connectionId ? await store.getConnectionById(r.connectionId) : null;
+      if (!c || !isLlmProvider(c.provider)) throw new UserError(`Аккаунт провайдера модели «${r.name}» не подключён`);
+      const creds = llmCredentials(c);
+      return key === "LLM_API_KEY" ? creds.key : creds.baseUrl;
+    }
+    case "LLM_MODEL":
+      return r.externalId;
     default:
       throw new UserError(`У «${r.name}» нет выхода ${key}`);
   }

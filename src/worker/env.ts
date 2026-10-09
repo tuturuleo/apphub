@@ -6,6 +6,8 @@ export interface ProvisionParams {
 
 export interface AppEnv {
   DB: D1Database;
+  /** Workers AI: модели прямо из Worker, бесплатно в пределах дневного лимита аккаунта. */
+  AI?: Ai;
   /** Фоновое создание ресурсов проекта (src/worker/workflow.ts). */
   PROVISION: Workflow<ProvisionParams>;
   /** base64, 32 байта — ключ AES-GCM для токенов провайдеров. */

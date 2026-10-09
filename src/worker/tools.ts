@@ -41,6 +41,8 @@ export const INSTRUCTIONS = `apphub создаёт прототипы на бе�
 3. update_project_files — закоммить код приложения. Не ломай конфиг деплоя (wrangler.jsonc, .github/workflows, Dockerfile, имена баз и биндингов). Схему базы меняй новыми файлами миграций, не правь применённые.
 4. Коммит запускает деплой — дождись его в get_project и проверь, что сайт открывается.
 
+Бесплатные LLM для проектов: модели из каталога (list_resources, тип llm.model) передаются в сервис или Worker проекта через connect_resources — выходы LLM_BASE_URL, LLM_API_KEY, LLM_MODEL (OpenAI-совместимый API). Ключ — ключ аккаунта провайдера, предупреди об этом пользователя.
+
 Удалять проекты отсюда нельзя — только в интерфейсе AppHub кнопкой «Удалить проект и ресурсы».`;
 
 export interface ToolAnnotations {

@@ -7,6 +7,7 @@ export const KIND_LABEL: Record<ResourceKind, string> = {
   database: "База данных",
   data: "Данные",
   bot: "Telegram-бот",
+  llm: "Модель LLM",
 };
 
 export const ORIGIN_LABEL: Record<ResourceOrigin, string> = {

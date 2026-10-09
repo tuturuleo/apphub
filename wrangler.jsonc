@@ -21,6 +21,8 @@
     }
   ],
   // Создание ресурсов проекта идёт в фоне и не зависит от того, дождался ли клиент ответа
+  // Workers AI для ассистента: без ключей, бесплатно 10 000 нейронов в день на аккаунт
+  "ai": { "binding": "AI" },
   "workflows": [
     { "name": "apphub-provision", "binding": "PROVISION", "class_name": "ProvisionWorkflow" }
   ],

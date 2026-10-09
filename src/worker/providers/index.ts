@@ -8,6 +8,7 @@ import { GoogleDrive } from "./google";
 import { Render } from "./render";
 import { Supabase } from "./supabase";
 import { Telegram, chatLabel } from "./telegram";
+import { verifyLlmKey } from "../llm";
 
 export const PROVIDERS: ProviderInfo[] = [
   {
@@ -156,6 +157,70 @@ export const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
+    id: "groq",
+    group: "llm",
+    multiAccount: true,
+    name: "Groq",
+    summary: "Бесплатные LLM: gpt-oss-120b, Qwen — около 1000 запросов в день на модель, очень быстро",
+    tokenUrl: "https://console.groq.com/keys",
+    tokenLinkLabel: "страницу ключей Groq",
+    steps: ["Войдите (карта не нужна), Create API Key, задайте имя — например, AppHub — и вставьте ключ сюда."],
+    notes: [
+      "Модели аккаунта появятся в «Ресурсах» → «Найти в аккаунте». Их можно выбрать в ассистенте и передать в проекты.",
+    ],
+  },
+  {
+    id: "openrouter",
+    group: "llm",
+    multiAccount: true,
+    name: "OpenRouter",
+    summary: "Много моделей через один ключ; бесплатные (:free) — около 50 запросов в день",
+    tokenUrl: "https://openrouter.ai/settings/keys",
+    tokenLinkLabel: "страницу ключей OpenRouter",
+    steps: ["Войдите, Create Key, задайте имя — например, AppHub — и вставьте ключ сюда."],
+    notes: ["AppHub показывает только бесплатные модели. Бесплатные провайдеры OpenRouter могут сохранять запросы."],
+  },
+  {
+    id: "mistral",
+    group: "llm",
+    multiAccount: true,
+    name: "Mistral",
+    summary: "Модели Mistral: бесплатный план с ежемесячными кредитами",
+    tokenUrl: "https://console.mistral.ai/api-keys",
+    tokenLinkLabel: "страницу ключей Mistral",
+    steps: [
+      "Выберите бесплатный план (Experiment / Free), если ещё не выбран.",
+      "Create new key, задайте имя — например, AppHub — и вставьте ключ сюда.",
+    ],
+    notes: ["На бесплатном плане запросы могут использоваться для обучения — это отключается в настройках Mistral."],
+  },
+  {
+    id: "nvidia",
+    group: "llm",
+    multiAccount: true,
+    name: "NVIDIA",
+    summary: "Модели NVIDIA NIM: gpt-oss, Nemotron — бесплатно для участников NVIDIA Developer Program",
+    tokenUrl: "https://build.nvidia.com/settings/api-keys",
+    tokenLinkLabel: "страницу ключей NVIDIA",
+    steps: ["Войдите в NVIDIA Developer Program, Generate API Key и вставьте ключ сюда."],
+    notes: ["При подключении AppHub отправит один короткий запрос к модели, чтобы проверить ключ."],
+  },
+  {
+    id: "openai_compat",
+    group: "llm",
+    multiAccount: true,
+    name: "Другой OpenAI-совместимый",
+    summary: "Любой сервис с OpenAI-совместимым API: свой сервер, прокси, другой провайдер",
+    tokenUrl: "https://platform.openai.com/docs/api-reference/chat",
+    tokenLinkLabel: "описание формата OpenAI API",
+    secretMultiline: true,
+    steps: [
+      "Первая строка — адрес API (https, обычно оканчивается на /v1), вторая — ключ.",
+      "AppHub проверит ключ запросом списка моделей.",
+    ],
+    notes: ["Например: https://api.example.com/v1 на первой строке и ключ sk-… на второй."],
+  },
+  {
     id: "telegram",
     multiAccount: false,
     name: "Telegram",
@@ -237,6 +302,12 @@ export async function verifyConnection(
       );
       return { provider, label: `доступна ${model.display_name}`, accountId: "anthropic", meta: {} };
     }
+    case "groq":
+    case "openrouter":
+    case "mistral":
+    case "nvidia":
+    case "openai_compat":
+      return verifyLlmKey(provider, token);
     case "telegram": {
       const bot = new Telegram(token);
       const me = await bot.me();

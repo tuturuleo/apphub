@@ -4,7 +4,15 @@ import type { Store } from "./db";
 import { Clients, deleteAtProvider } from "./engine";
 import { cloudflareConsole } from "./providers/cloudflare";
 import { supabaseConsole } from "./providers/supabase";
+import { llmCredentials, listModels } from "./llm";
 import { UserError } from "./service";
+
+const LLM_CONSOLE: Partial<Record<string, string>> = {
+  groq: "https://console.groq.com/settings/limits",
+  openrouter: "https://openrouter.ai/activity",
+  mistral: "https://console.mistral.ai/usage",
+  nvidia: "https://build.nvidia.com/models",
+};
 
 type Found = Omit<DiscoveredResource, "inCatalog">;
 
@@ -91,6 +99,30 @@ async function listAtProvider(store: Store, connectionId: string): Promise<Found
         meta: {},
       }));
     }
+    case "groq":
+    case "openrouter":
+    case "mistral":
+    case "nvidia":
+    case "openai_compat": {
+      const full = await store.getConnectionById(connectionId);
+      if (!full) throw new UserError("Аккаунт не найден", 404);
+      const { baseUrl, key } = llmCredentials(full);
+      const consoleUrl = LLM_CONSOLE[connection.provider] ?? baseUrl;
+      return (await listModels(connection.provider, baseUrl, key)).map((m) => ({
+        type: "llm.model",
+        kind: "llm",
+        name: m.id,
+        externalId: m.id,
+        url: null,
+        consoleUrl,
+        meta: {
+          provider: connection.provider,
+          ...(m.contextLength ? { context: String(m.contextLength) } : {}),
+          tools: m.tools === null ? "unknown" : m.tools ? "yes" : "no",
+          ...(m.suggested ? { suggested: "yes" } : {}),
+        },
+      }));
+    }
     default:
       throw new UserError("У этого подключения нет ресурсов для каталога");
   }
@@ -101,7 +133,9 @@ export async function discoverResources(store: Store, connectionId: string): Pro
   const catalog = await store.listCatalog();
   return found.map((f) => ({
     ...f,
-    inCatalog: catalog.some((r) => r.connectionId === connectionId && r.type === f.type && r.externalId === f.externalId),
+    inCatalog: catalog.some(
+      (r) => r.connectionId === connectionId && r.type === f.type && r.externalId === f.externalId,
+    ),
   }));
 }
 

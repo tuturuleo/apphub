@@ -44,7 +44,10 @@ function fakeStore(secrets: Record<string, string>) {
       res("api", "render.service"),
       res("d1", "cloudflare.d1", { kind: "database" }),
       res("shared", "postgres.external", { kind: "database", binding: { mode: "isolated", schema: "p_x", role: "r" } }),
+      res("model", "llm.model", { kind: "llm", connectionId: "conn-groq", externalId: "openai/gpt-oss-120b" }),
     ],
+    getConnectionById: async (id: string) =>
+      id === "conn-groq" ? { id, provider: "groq", label: "", accountId: "", meta: {}, createdAt: 0, token: "gsk_key" } : null,
     getBindingSecret: async (_p: string, id: string) => (id === "shared" ? "postgresql://app_x:pw@h:5432/d" : null),
     hasResourceSecret: async (id: string) => id in secrets,
     getResourceSecret: async (id: string) => secrets[id] ?? null,
@@ -95,5 +98,19 @@ describe("связи ресурсов", () => {
     const outputs = await outputsOf(store, res("nodb", "supabase.project"));
     expect(outputs.find((o) => o.key === "DATABASE_URL")?.available).toBe(false);
     expect(outputs.find((o) => o.key === "SUPABASE_URL")?.available).toBe(true);
+  });
+
+  it("модель LLM отдаёт проекту адрес API, ключ и имя модели", async () => {
+    renderCalls.length = 0;
+    const { store } = fakeStore({});
+    for (const output of ["LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"]) {
+      const wire = await connect(store, "p", { sourceId: "model", output, targetId: "api" });
+      expect(wire.error).toBeNull();
+    }
+    expect(renderCalls.filter((c) => c !== "deploy")).toEqual([
+      "LLM_BASE_URL=https://api.groq.com/openai/v1",
+      "LLM_API_KEY=gsk_key",
+      "LLM_MODEL=openai/gpt-oss-120b",
+    ]);
   });
 });
