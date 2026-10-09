@@ -1,2 +1,4 @@
 ENCRYPTION_KEY=base64-32-bytes
 DEV_ALLOW_NO_AUTH=true
+# Код установки: нужен для первого passkey и восстановления доступа (вход на localhost — только при DEV_ALLOW_NO_AUTH=false)
+SETUP_CODE=change-me

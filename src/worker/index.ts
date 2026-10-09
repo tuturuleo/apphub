@@ -1,5 +1,6 @@
 import { Hono, type ErrorHandler } from "hono";
-import { requireAccess } from "./auth";
+import * as auth from "./auth";
+import { AuthError, requireAuth } from "./auth";
 import { Store } from "./db";
 import { projectStatus, resourcesHealth } from "./engine";
 import type { AppEnv } from "./env";
@@ -42,18 +43,58 @@ type Ctx = { Bindings: AppEnv; Variables: { store: Store } };
 
 const onError: ErrorHandler<Ctx> = (err, c) => {
   if (err instanceof UserError) return c.json({ error: err.message }, err.status);
+  if (err instanceof AuthError) return c.json({ error: err.message }, err.status);
   console.error(err);
   return c.json({ error: err.message }, err instanceof ProviderError ? 502 : 500);
 };
 
 const api = new Hono<Ctx>().basePath("/api");
 
-api.use("*", requireAccess);
+api.use("*", requireAuth);
 api.use("*", async (c, next) => {
   c.set("store", new Store(c.env));
   await next();
 });
 api.onError(onError);
+
+// --- вход: passkey владельца, сессии, токены MCP ---
+
+api.get("/auth/state", async (c) => c.json(await auth.authState(c)));
+api.post("/auth/register/options", async (c) => {
+  const body = await c.req.json<{ setupCode?: string }>().catch(() => ({}) as { setupCode?: string });
+  return c.json(await auth.registrationOptions(c, body.setupCode));
+});
+api.post("/auth/register/verify", async (c) => {
+  const body = await c.req.json<{ challengeId: string; response: never; name?: string }>();
+  await auth.registrationVerify(c, body.challengeId, body.response, body.name ?? "");
+  return c.json({ ok: true });
+});
+api.post("/auth/login/options", async (c) => c.json(await auth.authenticationOptions(c)));
+api.post("/auth/login/verify", async (c) => {
+  const body = await c.req.json<{ challengeId: string; response: never }>();
+  await auth.authenticationVerify(c, body.challengeId, body.response);
+  return c.json({ ok: true });
+});
+api.post("/auth/logout", async (c) => {
+  await auth.logout(c);
+  return c.json({ ok: true });
+});
+
+api.get("/security", async (c) =>
+  c.json({ passkeys: await auth.listPasskeys(c.env), tokens: await auth.listTokens(c.env) }),
+);
+api.delete("/security/passkeys/:id", async (c) => {
+  await auth.deletePasskey(c.env, c.req.param("id"));
+  return c.body(null, 204);
+});
+api.post("/security/tokens", async (c) => {
+  const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string });
+  return c.json(await auth.createToken(c.env, body.name ?? ""), 201);
+});
+api.delete("/security/tokens/:id", async (c) => {
+  await auth.deleteToken(c.env, c.req.param("id"));
+  return c.body(null, 204);
+});
 
 // --- провайдеры и подключения ---
 
@@ -86,7 +127,10 @@ api.post("/connections", async (c) => {
   } else {
     id = await store.saveConnection(verified, token.trim());
   }
-  return c.json((await store.listConnections()).find((x) => x.id === id), 201);
+  return c.json(
+    (await store.listConnections()).find((x) => x.id === id),
+    201,
+  );
 });
 
 // Заменяет токен существующего аккаунта
@@ -286,7 +330,7 @@ api.all("*", (c) => c.json({ error: "Not found" }, 404));
 
 const app = new Hono<Ctx>();
 app.onError(onError);
-app.use("/mcp", requireAccess);
+app.use("/mcp", requireAuth);
 app.all("/mcp", (c) => handleMcp(c.req.raw, new Store(c.env)));
 app.route("/", api);
 
@@ -294,8 +338,6 @@ export default {
   fetch: app.fetch,
   // Cron Trigger из wrangler.jsonc: проверка проектов и уведомления о проблемах
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(
-      runMonitor(new Store(env)).then((r) => console.log("Мониторинг", r)),
-    );
+    ctx.waitUntil(runMonitor(new Store(env)).then((r) => console.log("Мониторинг", r)));
   },
 } satisfies ExportedHandler<AppEnv>;

@@ -30,7 +30,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {
-      message = ((await res.json()) as { error?: string }).error ?? message;
+      const data = (await res.json()) as { error?: string; auth?: boolean };
+      // Сессия закончилась — интерфейс покажет экран входа
+      if (res.status === 401 && data.auth) window.dispatchEvent(new Event("apphub:unauthorized"));
+      message = data.error ?? message;
     } catch {
       // не JSON
     }
@@ -40,7 +43,33 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+export interface AuthState {
+  configured: boolean;
+  authenticated: boolean;
+  devNoAuth: boolean;
+  setupCodeSet: boolean;
+}
+
+export interface SecurityInfo {
+  passkeys: { id: string; name: string; rpId: string; createdAt: number; lastUsedAt: number | null }[];
+  tokens: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[];
+}
+
+type Options = { challengeId: string; options: never };
+
 export const api = {
+  authState: () => request<AuthState>("GET", "/auth/state"),
+  registerOptions: (setupCode?: string) => request<Options>("POST", "/auth/register/options", { setupCode }),
+  registerVerify: (challengeId: string, response: unknown, name: string) =>
+    request<void>("POST", "/auth/register/verify", { challengeId, response, name }),
+  loginOptions: () => request<Options>("POST", "/auth/login/options", {}),
+  loginVerify: (challengeId: string, response: unknown) =>
+    request<void>("POST", "/auth/login/verify", { challengeId, response }),
+  logout: () => request<void>("POST", "/auth/logout", {}),
+  security: () => request<SecurityInfo>("GET", "/security"),
+  deletePasskey: (id: string) => request<void>("DELETE", `/security/passkeys/${encodeURIComponent(id)}`),
+  createToken: (name: string) => request<{ id: string; token: string }>("POST", "/security/tokens", { name }),
+  deleteToken: (id: string) => request<void>("DELETE", `/security/tokens/${id}`),
   providers: () => request<ProviderInfo[]>("GET", "/providers"),
   connections: () => request<Connection[]>("GET", "/connections"),
   addConnection: (provider: ProviderId, token: string) =>

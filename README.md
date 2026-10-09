@@ -31,7 +31,7 @@ npm run setup:local   # .dev.vars с ключом шифрования + миг�
 npm run dev           # http://localhost:5179
 ```
 
-Локально проверка доступа отключена (`DEV_ALLOW_NO_AUTH=true` в `.dev.vars`), но подключения и рецепты
+Локально вход отключён (`DEV_ALLOW_NO_AUTH=true` в `.dev.vars`), но подключения и рецепты
 работают с настоящими API GitHub и Cloudflare — проекты создаются по-настоящему.
 
 Локальный workerd не умеет ходить через прокси, поэтому в dev запросы к API провайдеров идут через
@@ -63,12 +63,12 @@ apphub отдаёт свои операции как MCP-сервер по ад�
 claude mcp add --transport http apphub http://localhost:5179/mcp
 ```
 
-**Задеплоенный apphub.** `/mcp` закрыт тем же Cloudflare Access. Для Claude Code создайте Access service token
-(Zero Trust → Access → Service Auth), добавьте в приложение политику Service Auth с этим токеном и подключите:
+**Задеплоенный apphub.** `/mcp` закрыт токеном. Создайте его на странице «Безопасность» (показывается один раз)
+и подключите — точная команда появится там же:
 
 ```bash
 claude mcp add --transport http apphub https://apphub.<поддомен>.workers.dev/mcp \
-  --header "CF-Access-Client-Id: <id>" --header "CF-Access-Client-Secret: <secret>"
+  --header "Authorization: Bearer ah_…"
 ```
 
 Коннекторы claude.ai требуют OAuth — это следующий шаг.
@@ -82,10 +82,27 @@ openssl rand -base64 32 | npx wrangler secret put ENCRYPTION_KEY
 npm run deploy
 ```
 
-Затем закройте доступ через Cloudflare Access (бесплатно до 50 пользователей):
-Workers & Pages → apphub → Settings → Domains & Routes → workers.dev → включить Cloudflare Access.
-Скопируйте Audience (AUD) и домен команды (`<team>.cloudflareaccess.com`) в `vars` в `wrangler.jsonc`
-и задеплойте ещё раз. Без этих переменных API отвечает 503 — apphub не бывает открытым случайно.
+Код установки задайте до первого открытия — без него зарегистрировать владельца нельзя:
+
+```bash
+openssl rand -base64 18 | tee /dev/stderr | npx wrangler secret put SETUP_CODE   # сохраните код
+```
+
+Откройте apphub, введите код и создайте passkey (Touch ID, Face ID, Windows Hello или ключ). Дальше вход — только
+по passkey. Тот же код нужен, чтобы добавить passkey на новом устройстве или восстановить доступ; сменить его —
+снова `wrangler secret put SETUP_CODE`.
+
+## Вход
+
+- Один владелец, вход по passkey (WebAuthn). Сессия — cookie `HttpOnly`, `Secure`, `SameSite=Lax` на 30 дней;
+  в базе только хеш. Изменяющие запросы с cookie принимаются только с адреса самого apphub (проверка `Origin`).
+- MCP и скрипты — токены `ah_…` в заголовке `Authorization: Bearer`. В базе — хеши, отозвать можно в любой момент.
+- Passkey привязан к адресу. Если открывать apphub через другой адрес (прокси для доступа без VPN), добавьте там
+  отдельный passkey с кодом установки. Адресу из `X-Forwarded-Host` apphub верит, только если прокси прислал
+  секрет `PROXY_SECRET`.
+- Дополнительно можно поставить перед apphub Cloudflare Access: заполните `ACCESS_TEAM_DOMAIN` и `ACCESS_AUD`
+  в `vars` — его JWT тоже принимается.
+- Локально вход отключён `DEV_ALLOW_NO_AUTH=true` в `.dev.vars`; в развёрнутом apphub этой переменной нет.
 
 Создание идёт в фоне: `POST /api/projects` записывает проект, `POST /api/projects/:id/provision` запускает
 Cloudflare Workflow (`src/worker/workflow.ts`) и сразу отвечает. Workflow доводит создание до конца, даже если

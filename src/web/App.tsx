@@ -2,12 +2,22 @@ import { ChatPage } from "./pages/ChatPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { LimitsPage } from "./pages/LimitsPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { AuthGate } from "./auth";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { href, useRoute } from "./router";
 
 export function App() {
+  return (
+    <AuthGate>
+      <Shell />
+    </AuthGate>
+  );
+}
+
+function Shell() {
   const route = useRoute();
 
   return (
@@ -38,6 +48,9 @@ export function App() {
           <a href={href.connections} aria-current={route.page === "connections" ? "page" : undefined}>
             Подключения
           </a>
+          <a href={href.security} aria-current={route.page === "security" ? "page" : undefined}>
+            Безопасность
+          </a>
         </nav>
       </header>
       <main className="content">
@@ -48,6 +61,7 @@ export function App() {
         {route.page === "chat" && <ChatPage />}
         {route.page === "limits" && <LimitsPage />}
         {route.page === "resources" && <ResourcesPage />}
+        {route.page === "security" && <SecurityPage />}
       </main>
     </div>
   );

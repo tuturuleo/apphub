@@ -1011,3 +1011,50 @@ code {
   margin-top: 3px;
   accent-color: var(--accent);
 }
+
+/* --- вход и безопасность --- */
+
+.auth-screen {
+  max-width: 420px;
+  margin: 12vh auto 0;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-screen h1 {
+  font-size: 28px;
+}
+
+.code-block {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.auth-screen h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.token-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.token-form .field {
+  flex: 1;
+  min-width: 200px;
+}

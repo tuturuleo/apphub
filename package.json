@@ -17,6 +17,8 @@
     "@anthropic-ai/sdk": "^0.132.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@noble/hashes": "^2.4.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3",
     "@tanstack/react-query": "^5.104.1",
     "hono": "^4.13.13",
     "jose": "^6.2.12",
