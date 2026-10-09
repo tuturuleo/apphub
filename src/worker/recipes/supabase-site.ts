@@ -15,6 +15,7 @@ export const supabaseSite: Recipe = {
   stack: ["Supabase", "Postgres", "GitHub Pages", "GitHub Actions"],
   requires: ["github", "supabase"],
   needs: ["supabase.projects"],
+  russia: { ok: true, note: null },
   fields: [
     {
       key: "region",

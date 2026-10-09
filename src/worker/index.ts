@@ -15,10 +15,12 @@ import {
   createProject,
   deployProject,
   destroyProject,
+  getSettings,
   listGoogleSheets,
   listProjectSummaries,
   requireProject,
   runAction,
+  saveSettings,
   settleProvisioning,
   startProvisioning,
 } from "./service";
@@ -129,6 +131,11 @@ api.post("/chat", async (c) => {
   if (!Array.isArray(messages) || messages.length === 0) return c.json({ error: "Пустая переписка" }, 400);
   return c.json(await runChat(c.var.store, messages));
 });
+
+// --- настройки ---
+
+api.get("/settings", async (c) => c.json(await getSettings(c.var.store)));
+api.put("/settings", async (c) => c.json(await saveSettings(c.var.store, await c.req.json())));
 
 // --- Google Drive ---
 

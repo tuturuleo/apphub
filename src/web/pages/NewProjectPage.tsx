@@ -2,7 +2,16 @@ import { useState } from "react";
 import type { LimitItem, RecipeInfo } from "../../shared/types";
 import { ErrorNote, Loading } from "../components";
 import { formatAmount } from "../limits";
-import { errorMessage, useConnections, useCreateProject, useGoogleSheets, useLimits, useRecipes } from "../queries";
+import {
+  errorMessage,
+  useConnections,
+  useCreateProject,
+  useGoogleSheets,
+  useLimits,
+  useRecipes,
+  useSaveSettings,
+  useSettings,
+} from "../queries";
 import { href, navigate } from "../router";
 
 const PROVIDER_NAMES: Record<string, string> = {
@@ -16,8 +25,12 @@ export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   const recipes = useRecipes();
   const connections = useConnections();
   const limits = useLimits();
+  const settings = useSettings();
+  const saveSettings = useSaveSettings();
+  const audienceRussia = settings.data?.audienceRussia ?? false;
 
-  if (recipes.error || connections.error) return <ErrorNote message={errorMessage(recipes.error ?? connections.error)} />;
+  if (recipes.error || connections.error)
+    return <ErrorNote message={errorMessage(recipes.error ?? connections.error)} />;
   if (!recipes.data || !connections.data) return <Loading />;
 
   const connected = new Set(connections.data.map((c) => c.provider));
@@ -40,34 +53,52 @@ export function NewProjectPage({ recipeId }: { recipeId?: string }) {
     <>
       <div className="page-head">
         <h1>Новый проект</h1>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={audienceRussia}
+            disabled={!settings.data || saveSettings.isPending}
+            onChange={(e) => saveSettings.mutate({ audienceRussia: e.target.checked })}
+          />
+          Пользователи в России
+        </label>
       </div>
       <p className="muted lead">Рецепт — проверенная связка бесплатных сервисов с готовым шаблоном кода.</p>
       <ul className="card-list">
-        {recipes.data.map((r) => {
-          const missing = r.requires.filter((p) => !connected.has(p));
-          return (
-            <li key={r.id} className="card card-link">
-              <a className="card-cover" href={href.newProject(r.id)} aria-label={r.name} />
-              <h2>{r.name}</h2>
-              <p>{r.summary}</p>
-              <div className="tags">
-                {r.stack.map((s) => (
-                  <span key={s} className="tag">
-                    {s}
-                  </span>
+        {[...recipes.data]
+          // С учётом аудитории: доступные из России без VPN — первыми (сортировка устойчивая)
+          .sort((a, b) => (audienceRussia ? Number(b.russia.ok) - Number(a.russia.ok) : 0))
+          .map((r) => {
+            const missing = r.requires.filter((p) => !connected.has(p));
+            return (
+              <li key={r.id} className="card card-link">
+                <a className="card-cover" href={href.newProject(r.id)} aria-label={r.name} />
+                <div className="card-row">
+                  <h2>{r.name}</h2>
+                  {audienceRussia && r.russia.ok && <span className="badge badge-ok">Рекомендуется</span>}
+                </div>
+                <p>{r.summary}</p>
+                <div className="tags">
+                  {r.stack.map((s) => (
+                    <span key={s} className="tag">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+                {missing.length > 0 && (
+                  <p className="muted small">
+                    Нужно подключить: {missing.map((p) => PROVIDER_NAMES[p] ?? p).join(", ")}
+                  </p>
+                )}
+                {!r.russia.ok && <p className="small limit-warn">Из России без VPN может не открываться</p>}
+                {exhausted(r).map((l) => (
+                  <p key={l.key} className="small limit-full">
+                    Лимит исчерпан: {l.label}
+                  </p>
                 ))}
-              </div>
-              {missing.length > 0 && (
-                <p className="muted small">Нужно подключить: {missing.map((p) => PROVIDER_NAMES[p] ?? p).join(", ")}</p>
-              )}
-              {exhausted(r).map((l) => (
-                <p key={l.key} className="small limit-full">
-                  Лимит исчерпан: {l.label}
-                </p>
-              ))}
-            </li>
-          );
-        })}
+              </li>
+            );
+          })}
       </ul>
     </>
   );
@@ -101,6 +132,7 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
       </div>
       <p className="muted lead">{recipe.summary}</p>
 
+      {recipe.russia.note && <div className="note note-warn">{recipe.russia.note}</div>}
       {exhausted.length > 0 && missing.length === 0 && (
         <div className="note note-error">
           Не хватает бесплатного лимита — проект не создастся:
@@ -172,7 +204,11 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
 
           <ErrorNote message={errorMessage(create.error)} />
           <div>
-            <button className="button" type="submit" disabled={create.isPending || create.isSuccess || exhausted.length > 0}>
+            <button
+              className="button"
+              type="submit"
+              disabled={create.isPending || create.isSuccess || exhausted.length > 0}
+            >
               {create.isPending || create.isSuccess ? "Создаю…" : "Создать проект"}
             </button>
           </div>

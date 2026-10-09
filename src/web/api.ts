@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   ChatMessage,
   ChatResult,
   Connection,
@@ -54,6 +55,8 @@ export const api = {
       "GET",
       "/google/sheets",
     ),
+  settings: () => request<AppSettings>("GET", "/settings"),
+  saveSettings: (patch: Partial<AppSettings>) => request<AppSettings>("PUT", "/settings", patch),
   limits: () => request<LimitItem[]>("GET", "/limits"),
   monitor: () => request<MonitorState>("GET", "/monitor"),
   runMonitor: () => request<MonitorResult>("POST", "/monitor/run"),

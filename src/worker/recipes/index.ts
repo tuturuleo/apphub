@@ -12,6 +12,6 @@ export function findRecipe(id: string): Recipe | undefined {
 }
 
 export function recipeInfo(r: Recipe): RecipeInfo {
-  const { id, name, summary, stack, requires, fields, notes, needs } = r;
-  return { id, name, summary, stack, requires, fields, notes, needs };
+  const { id, name, summary, stack, requires, fields, notes, needs, russia } = r;
+  return { id, name, summary, stack, requires, fields, notes, needs, russia };
 }

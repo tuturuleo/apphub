@@ -12,6 +12,10 @@ export const cfFullstack: Recipe = {
   stack: ["Cloudflare Workers", "D1", "GitHub Actions"],
   requires: ["github", "cloudflare"],
   needs: ["cloudflare.workers", "cloudflare.d1.count", "cloudflare.d1.storage"],
+  russia: {
+    ok: false,
+    note: "Сайт на Cloudflare (workers.dev): с июня 2025 российские провайдеры ограничивают трафик к Cloudflare, без VPN сайт может не открываться — и на своём домене тоже.",
+  },
   fields: [
     {
       key: "visibility",

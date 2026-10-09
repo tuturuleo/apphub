@@ -23,6 +23,7 @@ export const keys = {
   projectStatus: (id: string) => ["projects", id, "status"] as const,
   monitor: ["monitor"] as const,
   limits: ["limits"] as const,
+  settings: ["settings"] as const,
   googleSheets: ["google", "sheets"] as const,
 };
 
@@ -159,6 +160,18 @@ export function useDeleteProject() {
       qc.removeQueries({ queryKey: keys.project(id) });
       return qc.invalidateQueries({ queryKey: keys.projects, exact: true });
     },
+  });
+}
+
+// --- настройки ---
+
+export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: api.settings, staleTime: Infinity });
+
+export function useSaveSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.saveSettings,
+    onSuccess: (settings) => qc.setQueryData(keys.settings, settings),
   });
 }
 

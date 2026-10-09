@@ -47,6 +47,7 @@ export const dockerPostgres: Recipe = {
   stack: ["Render", "Docker", "Python", "Supabase", "Postgres"],
   requires: ["github", "render", "supabase"],
   needs: ["supabase.projects", "render.hours"],
+  russia: { ok: true, note: null },
   fields: [
     {
       key: "region",

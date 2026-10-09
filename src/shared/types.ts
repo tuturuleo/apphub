@@ -71,6 +71,13 @@ export interface RecipeInfo {
   notes: string[];
   /** Лимиты, которые рецепт расходует — по ним проверяем, влезет ли проект. */
   needs: LimitKey[];
+  /** Открывается ли созданный сайт из России без VPN. */
+  russia: { ok: boolean; note: string | null };
+}
+
+export interface AppSettings {
+  /** Пользователи сайтов — в России: рекомендуем рецепты, которые открываются без VPN. */
+  audienceRussia: boolean;
 }
 
 /** pending — создан, ресурсы ещё не начали создаваться. */

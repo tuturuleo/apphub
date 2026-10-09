@@ -1,5 +1,5 @@
 // Операции с проектами, общие для REST API интерфейса и MCP-сервера.
-import type { DestroyResult, Project, ProjectSummary, Resource } from "../shared/types";
+import type { AppSettings, DestroyResult, Project, ProjectSummary, Resource } from "../shared/types";
 import type { Store } from "./db";
 import { deleteResource, deletionOrder, missingConnections, runResourceAction, triggerDeploy } from "./engine";
 import { blockingLimits, describeLimit } from "./limits";
@@ -308,4 +308,19 @@ export async function listGoogleSheets(store: Store) {
     serviceAccount: drive.email,
     sheets: files.map((f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime, url: f.webViewLink })),
   };
+}
+
+// --- настройки ---
+
+const AUDIENCE_RUSSIA_KEY = "settings.audienceRussia";
+
+export async function getSettings(store: Store): Promise<AppSettings> {
+  return { audienceRussia: (await store.getMeta(AUDIENCE_RUSSIA_KEY)) === "true" };
+}
+
+export async function saveSettings(store: Store, patch: Partial<AppSettings>): Promise<AppSettings> {
+  if (typeof patch.audienceRussia === "boolean") {
+    await store.setMeta(AUDIENCE_RUSSIA_KEY, String(patch.audienceRussia));
+  }
+  return getSettings(store);
 }

@@ -10,6 +10,7 @@ import { RECIPES, recipeInfo } from "./recipes";
 import {
   UserError,
   createProject,
+  getSettings,
   listGoogleSheets,
   deployProject,
   listProjectFiles,
@@ -24,7 +25,7 @@ import {
 export const INSTRUCTIONS = `apphub создаёт прототипы на бесплатных тарифах (GitHub, Cloudflare, Supabase) по готовым рецептам и следит за ними.
 
 Как разворачивать проект:
-1. list_recipes — выбери рецепт под задачу пользователя. Если у рецепта есть missingConnections, попроси пользователя подключить провайдера в интерфейсе apphub (страница «Подключения») — токены через MCP не передаются.
+1. list_recipes — выбери рецепт под задачу пользователя. Предпочитай рецепты с recommended: true: если пользователи в России, это рецепты, которые открываются без VPN; рецепт с availableInRussiaWithoutVpn: false предлагай, только объяснив ограничение. Если у рецепта есть missingConnections, попроси пользователя подключить провайдера в интерфейсе apphub (страница «Подключения») — токены через MCP не передаются.
 2. Согласуй с пользователем имя проекта (станет именем репозитория и сервисов) и параметры рецепта.
 3. create_project — создаёт ресурсы у провайдеров. Это реальные репозитории и сервисы в аккаунтах пользователя, поэтому вызывай только после его явного согласия. Создание идёт в фоне: инструмент отвечает сразу, а status проекта в get_project меняется с provisioning на ready или failed (1–5 минут, с Supabase дольше).
 4. Первый деплой идёт 1–5 минут (GitHub Actions или Render — см. runs). Проверяй get_project, пока он не завершится; при ошибке открой лог по ссылке из runs и разберись с причиной.
@@ -122,6 +123,7 @@ export const TOOLS: AppTool[] = [
     input: {},
     async run(store) {
       const connected = new Set((await store.listConnections()).map((c) => c.provider));
+      const { audienceRussia } = await getSettings(store);
       return RECIPES.map((r) => {
         const info = recipeInfo(r);
         return {
@@ -131,6 +133,9 @@ export const TOOLS: AppTool[] = [
           stack: info.stack,
           missingConnections: info.requires.filter((p) => !connected.has(p)),
           usesLimits: info.needs,
+          availableInRussiaWithoutVpn: info.russia.ok,
+          russiaNote: info.russia.note,
+          recommended: !audienceRussia || info.russia.ok,
           params: info.fields.map((f) => ({
             key: f.key,
             label: f.label,

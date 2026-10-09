@@ -20,6 +20,7 @@ export const sheetSite: Recipe = {
   stack: ["GitHub Pages", "GitHub Actions", "Google Sheets"],
   requires: ["github"],
   needs: ["github.actions"],
+  russia: { ok: true, note: null },
   fields: [
     {
       key: "source",

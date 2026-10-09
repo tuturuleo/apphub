@@ -15,6 +15,11 @@
 | Docker-сервис + Postgres | сервис в Docker на Render (шаблон — Python/FastAPI), база в Supabase, миграции при старте | GitHub, Render, Supabase |
 | Сайт из Google-таблицы | публичное репо, GitHub Pages, пересборка по расписанию — из опубликованного CSV или приватной таблицы Drive | GitHub (+ Google) |
 
+**Доступность из России.** С июня 2025 российские провайдеры ограничивают трафик к Cloudflare, поэтому сайты на
+`workers.dev` (и на своих доменах за Cloudflare) без VPN могут не открываться. GitHub Pages, Supabase и Render
+открываются. У рецептов есть пометка, а настройка «Пользователи в России» (страница «Новый проект») поднимает
+доступные рецепты наверх — её учитывают и MCP, и ассистент (`recommended` в `list_recipes`).
+
 Рецепт = шаблон кода в `templates/<id>` + описание в `src/worker/recipes/<id>.ts`.
 В шаблонах `%%VAR%%` подставляется при создании проекта, `_github` и `_gitignore` становятся `.github` и `.gitignore`.
 
