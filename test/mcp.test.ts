@@ -5,6 +5,8 @@ import { handleMcp } from "../src/worker/mcp";
 // Достаточно того, что читают list_recipes и list_connections.
 const store = {
   listConnections: async () => [{ provider: "github", label: "me", accountId: "me", meta: {}, createdAt: 0 }],
+  // настройка «Пользователи в России» включена
+  getMeta: async (key: string) => (key === "settings.audienceRussia" ? "true" : null),
 } as unknown as Store;
 
 async function rpc(method: string, params: unknown = {}) {
@@ -45,5 +47,9 @@ describe("MCP", () => {
     const recipes = JSON.parse(result.content[0].text) as { id: string; missingConnections: string[] }[];
     expect(recipes.find((r) => r.id === "sheet-site")!.missingConnections).toEqual([]);
     expect(recipes.find((r) => r.id === "cf-fullstack")!.missingConnections).toEqual(["cloudflare"]);
+    // при пользователях в России Cloudflare-рецепт не рекомендуется, остальные — да
+    const recommended = recipes as unknown as { id: string; recommended: boolean }[];
+    expect(recommended.find((r) => r.id === "cf-fullstack")!.recommended).toBe(false);
+    expect(recommended.find((r) => r.id === "supabase-site")!.recommended).toBe(true);
   });
 });
