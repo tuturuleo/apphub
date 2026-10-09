@@ -14,7 +14,7 @@
       "binding": "DB",
       "database_name": "apphub",
       // Для деплоя: `npx wrangler d1 create apphub` и вставить сюда database_id
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d898867a-00ba-47f1-b135-d31bb56b1256",
       "migrations_dir": "migrations"
     }
   ],
