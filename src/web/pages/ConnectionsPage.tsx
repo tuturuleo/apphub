@@ -29,13 +29,6 @@ export function ConnectionsPage() {
             connection={connections.data!.find((c) => c.provider === p.id)}
           />
         ))}
-        <li className="card card-muted">
-          <div className="card-row">
-            <h2>Google Drive</h2>
-            <span className="badge">Скоро</span>
-          </div>
-          <p className="muted">Файлы и таблицы как источник данных для проектов.</p>
-        </li>
       </ul>
     </>
   );
@@ -109,15 +102,27 @@ function ProviderCard({
             </ul>
           )}
           <label className="field">
-            <span>Токен</span>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
+            <span>{provider.secretMultiline ? "Ключ (JSON)" : "Токен"}</span>
+            {provider.secretMultiline ? (
+              <textarea
+                className="secret"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                rows={5}
+                spellCheck={false}
+                placeholder='{ "type": "service_account", … }'
+                required
+              />
+            ) : (
+              <input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            )}
           </label>
           <ErrorNote message={error} />
           <div className="row">

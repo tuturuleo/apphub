@@ -1,4 +1,5 @@
 {
   "title": "%%PROJECT_NAME%%",
-  "sheetCsvUrl": "%%SHEET_CSV_URL%%"
+  "sheetCsvUrl": "%%SHEET_CSV_URL%%",
+  "googleSheetId": "%%GOOGLE_SHEET_ID%%"
 }

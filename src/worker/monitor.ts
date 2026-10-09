@@ -11,6 +11,7 @@ const KIND_LABEL: Record<ResourceKind, string> = {
   site: "Сайт",
   service: "Сервер",
   database: "База данных",
+  data: "Данные",
 };
 
 export interface AlertCandidate {

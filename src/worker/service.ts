@@ -4,6 +4,7 @@ import type { Store } from "./db";
 import { deleteResource, deletionOrder, missingConnections, runResourceAction, triggerDeploy } from "./engine";
 import { blockingLimits, describeLimit } from "./limits";
 import { GitHub, type RepoFile } from "./providers/github";
+import { GoogleDrive } from "./providers/google";
 import { findRecipe } from "./recipes";
 
 /** Ошибка во входных данных или состоянии — показывается пользователю как есть. */
@@ -51,7 +52,7 @@ export async function createProject(store: Store, input: NewProjectInput): Promi
   const invalid = recipe.validate?.(params);
   if (invalid) throw new UserError(invalid);
 
-  const missing = await missingConnections(store, recipe);
+  const missing = await missingConnections(store, recipe, params);
   if (missing.length > 0) throw new UserError(`Сначала подключите: ${missing.join(", ")}`);
 
   // Упрёмся в лимит бесплатного тарифа — лучше сказать сейчас, чем упасть посреди создания
@@ -293,4 +294,18 @@ export async function updateProjectFiles(
     `Коммит ${commit.slice(0, 7)}: ${message.split("\n")[0]} (изменено ${upsert.length}, удалено ${remove.length})`,
   );
   return { commit, changed: upsert.length, removed: remove.length };
+}
+
+// --- Google Drive ---
+
+/** Таблицы, доступные сервисному аккаунту Google, — для выбора источника данных. */
+export async function listGoogleSheets(store: Store) {
+  const google = await store.getConnection("google");
+  if (!google) throw new UserError("Google Drive не подключён");
+  const drive = new GoogleDrive(google.token);
+  const files = await drive.listSpreadsheets();
+  return {
+    serviceAccount: drive.email,
+    sheets: files.map((f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime, url: f.webViewLink })),
+  };
 }

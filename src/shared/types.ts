@@ -1,8 +1,8 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "telegram" | "anthropic";
+export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "google" | "telegram" | "anthropic";
 
-export type ResourceKind = "repo" | "site" | "service" | "database";
+export type ResourceKind = "repo" | "site" | "service" | "database" | "data";
 
 /** Тип ресурса у конкретного провайдера, определяет, как проверять его статус. */
 export type ResourceType =
@@ -11,7 +11,8 @@ export type ResourceType =
   | "cloudflare.worker"
   | "cloudflare.d1"
   | "supabase.project"
-  | "render.service";
+  | "render.service"
+  | "google.sheet";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -34,6 +35,8 @@ export interface ProviderInfo {
   steps: InstructionStep[];
   /** Пояснения под инструкцией: что apphub делает с токеном, ограничения тарифа. */
   notes: string[];
+  /** Секрет — многострочный текст (JSON-ключ), а не короткий токен. */
+  secretMultiline?: boolean;
 }
 
 export interface Connection {
@@ -47,12 +50,15 @@ export interface Connection {
 export interface RecipeField {
   key: string;
   label: string;
-  type: "text" | "url" | "select";
+  /** google-sheet — выбор из таблиц, доступных сервисному аккаунту Google. */
+  type: "text" | "url" | "select" | "google-sheet";
   required?: boolean;
   placeholder?: string;
   help?: string;
   options?: { value: string; label: string }[];
   default?: string;
+  /** Поле показывается, только когда другое поле имеет одно из значений. */
+  showIf?: { field: string; values: string[] };
 }
 
 export interface RecipeInfo {

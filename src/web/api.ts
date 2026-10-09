@@ -49,6 +49,11 @@ export const api = {
   resourceAction: (projectId: string, resourceId: string, action: ResourceActionId) =>
     request<void>("POST", `/projects/${projectId}/resources/${resourceId}/actions/${action}`),
   chat: (messages: ChatMessage[]) => request<ChatResult>("POST", "/chat", { messages }),
+  googleSheets: () =>
+    request<{ serviceAccount: string; sheets: { id: string; name: string; modifiedTime: string; url: string }[] }>(
+      "GET",
+      "/google/sheets",
+    ),
   limits: () => request<LimitItem[]>("GET", "/limits"),
   monitor: () => request<MonitorState>("GET", "/monitor"),
   runMonitor: () => request<MonitorResult>("POST", "/monitor/run"),

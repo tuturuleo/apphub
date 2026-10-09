@@ -28,6 +28,7 @@ describe("renderTemplate", () => {
     const files = renderTemplate("sheet-site", {
       PROJECT_NAME: "my-sheet",
       SHEET_CSV_URL: "https://example.com/pub?output=csv",
+      GOOGLE_SHEET_ID: "",
       CRON: "0 */6 * * *",
     });
     const config = JSON.parse(files.find((f) => f.path === "site.config.json")!.content);

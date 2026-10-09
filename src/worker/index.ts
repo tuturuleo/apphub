@@ -15,6 +15,7 @@ import {
   createProject,
   deployProject,
   destroyProject,
+  listGoogleSheets,
   listProjectSummaries,
   requireProject,
   runAction,
@@ -128,6 +129,10 @@ api.post("/chat", async (c) => {
   if (!Array.isArray(messages) || messages.length === 0) return c.json({ error: "Пустая переписка" }, 400);
   return c.json(await runChat(c.var.store, messages));
 });
+
+// --- Google Drive ---
+
+api.get("/google/sheets", async (c) => c.json(await listGoogleSheets(c.var.store)));
 
 // --- лимиты бесплатных тарифов ---
 

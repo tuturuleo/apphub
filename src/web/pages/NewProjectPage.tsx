@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { LimitItem, RecipeInfo } from "../../shared/types";
 import { ErrorNote, Loading } from "../components";
 import { formatAmount } from "../limits";
-import { errorMessage, useConnections, useCreateProject, useLimits, useRecipes } from "../queries";
+import { errorMessage, useConnections, useCreateProject, useGoogleSheets, useLimits, useRecipes } from "../queries";
 import { href, navigate } from "../router";
 
 const PROVIDER_NAMES: Record<string, string> = {
@@ -135,30 +135,33 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
             <small className="muted">Станет именем репозитория и сервисов. Латиница, цифры и дефис.</small>
           </label>
 
-          {recipe.fields.map((f) => (
-            <label key={f.key} className="field">
-              <span>{f.label}</span>
-              {f.type === "select" ? (
-                <select value={params[f.key]} onChange={(e) => setParams({ ...params, [f.key]: e.target.value })}>
-                  {f.options?.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type={f.type}
-                  value={params[f.key]}
-                  onChange={(e) => setParams({ ...params, [f.key]: e.target.value })}
-                  placeholder={f.placeholder}
-                  required={f.required}
-                />
-              )}
-              {f.help && <small className="muted">{f.help}</small>}
-            </label>
-          ))}
-
+          {recipe.fields
+            .filter((f) => !f.showIf || f.showIf.values.includes(params[f.showIf.field]))
+            .map((f) => (
+              <label key={f.key} className="field">
+                <span>{f.label}</span>
+                {f.type === "select" ? (
+                  <select value={params[f.key]} onChange={(e) => setParams({ ...params, [f.key]: e.target.value })}>
+                    {f.options?.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : f.type === "google-sheet" ? (
+                  <GoogleSheetSelect value={params[f.key]} onChange={(v) => setParams({ ...params, [f.key]: v })} />
+                ) : (
+                  <input
+                    type={f.type}
+                    value={params[f.key]}
+                    onChange={(e) => setParams({ ...params, [f.key]: e.target.value })}
+                    placeholder={f.placeholder}
+                    required={f.required}
+                  />
+                )}
+                {f.help && <small className="muted">{f.help}</small>}
+              </label>
+            ))}
           {recipe.notes.length > 0 && (
             <ul className="notes">
               {recipe.notes.map((n) => (
@@ -176,5 +179,45 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
         </form>
       )}
     </>
+  );
+}
+
+/** Выбор из таблиц, которыми поделились с сервисным аккаунтом Google. */
+function GoogleSheetSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const connections = useConnections();
+  const connected = !!connections.data?.some((c) => c.provider === "google");
+  const sheets = useGoogleSheets(connected);
+
+  if (!connections.data) return <Loading />;
+  if (!connected) {
+    return (
+      <div className="note">
+        Подключите Google Drive. <a href={href.connections}>Перейти к подключениям</a>
+      </div>
+    );
+  }
+  if (sheets.error) return <ErrorNote message={errorMessage(sheets.error)} />;
+  if (!sheets.data) return <Loading />;
+  if (sheets.data.sheets.length === 0) {
+    return (
+      <div className="note">
+        Сервисному аккаунту не доступна ни одна таблица. Поделитесь нужной с <b>{sheets.data.serviceAccount}</b> (права
+        «Читатель») и{" "}
+        <button type="button" className="link-button" onClick={() => void sheets.refetch()}>
+          обновите список
+        </button>
+        .
+      </div>
+    );
+  }
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} required>
+      <option value="">— выберите таблицу —</option>
+      {sheets.data.sheets.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+        </option>
+      ))}
+    </select>
   );
 }

@@ -816,3 +816,14 @@ select:focus {
 .limit-full {
   color: var(--error);
 }
+
+textarea.secret {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: inherit;
+  font: 13px/1.4 var(--mono);
+  resize: vertical;
+}

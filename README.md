@@ -13,7 +13,7 @@
 | Сайт + API + SQLite | репо, Worker со статикой и `/api/*`, база D1, деплой с миграциями | GitHub, Cloudflare |
 | Сайт + Postgres | проект Supabase (Postgres + анонимный вход + RLS), Pages, миграции через Supabase CLI в Actions | GitHub, Supabase |
 | Docker-сервис + Postgres | сервис в Docker на Render (шаблон — Python/FastAPI), база в Supabase, миграции при старте | GitHub, Render, Supabase |
-| Сайт из Google-таблицы | публичное репо, GitHub Pages, пересборка по расписанию из CSV | GitHub |
+| Сайт из Google-таблицы | публичное репо, GitHub Pages, пересборка по расписанию — из опубликованного CSV или приватной таблицы Drive | GitHub (+ Google) |
 
 Рецепт = шаблон кода в `templates/<id>` + описание в `src/worker/recipes/<id>.ts`.
 В шаблонах `%%VAR%%` подставляется при создании проекта, `_github` и `_gitignore` становятся `.github` и `.gitignore`.
@@ -114,6 +114,13 @@ Claude API (подключение «Claude API»); подписка Claude ег
 Cron срабатывает только у задеплоенного Worker. Локально — кнопка «Проверить сейчас», инструмент MCP `check_projects`
 или `curl "localhost:5179/cdn-cgi/handler/scheduled"`.
 
+## Google Drive
+
+Подключение по JSON-ключу сервисного аккаунта Google: он видит только таблицы, которыми поделились с его почтой.
+Рецепт «Сайт из Google-таблицы» умеет брать данные из такой приватной таблицы — без «Опубликовать в интернете»:
+таблица выбирается из списка, сборка в Actions читает её через Drive API (ключ — в секрете `GOOGLE_SA_KEY`).
+Таблица — ресурс проекта: мониторинг предупредит, если доступ к ней пропал. При удалении проекта таблица остаётся.
+
 ## Лимиты бесплатных тарифов
 
 Страница «Лимиты» (и MCP-инструмент `get_limits`) показывает «занято / доступно» по подключённым провайдерам:
@@ -152,7 +159,6 @@ migrations/            схема D1 самого apphub
 
 ## Дальше
 
-1. **Google Drive** — таблицы и файлы Drive как источник данных для проектов.
-2. **OAuth для MCP** — подключение apphub коннектором в claude.ai (нужен задеплоенный apphub).
+1. **OAuth для MCP** — подключение apphub коннектором в claude.ai (нужен задеплоенный apphub).
 
 Отложено: деплой самого apphub в Cloudflare.

@@ -23,6 +23,7 @@ export const keys = {
   projectStatus: (id: string) => ["projects", id, "status"] as const,
   monitor: ["monitor"] as const,
   limits: ["limits"] as const,
+  googleSheets: ["google", "sheets"] as const,
 };
 
 // Частота опроса: пока что-то создаётся или деплоится — часто, в покое — редко.
@@ -160,6 +161,11 @@ export function useDeleteProject() {
     },
   });
 }
+
+// --- Google Drive ---
+
+export const useGoogleSheets = (enabled: boolean) =>
+  useQuery({ queryKey: keys.googleSheets, queryFn: api.googleSheets, enabled, staleTime: 30_000 });
 
 // --- лимиты ---
 

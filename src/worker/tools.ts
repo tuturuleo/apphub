@@ -10,6 +10,7 @@ import { RECIPES, recipeInfo } from "./recipes";
 import {
   UserError,
   createProject,
+  listGoogleSheets,
   deployProject,
   listProjectFiles,
   listProjectSummaries,
@@ -133,6 +134,8 @@ export const TOOLS: AppTool[] = [
           params: info.fields.map((f) => ({
             key: f.key,
             label: f.label,
+            type: f.type,
+            onlyWhen: f.showIf,
             required: !!f.required,
             default: f.default,
             options: f.options?.map((o) => o.value),
@@ -155,6 +158,18 @@ export const TOOLS: AppTool[] = [
         const c = connections.find((x) => x.provider === p.id);
         return { provider: p.id, name: p.name, connected: !!c, account: c?.label ?? null };
       });
+    },
+  }),
+  defineTool({
+    name: "list_drive_sheets",
+    title: "Таблицы Google Drive",
+    description:
+      "Google-таблицы, доступные сервисному аккаунту apphub (ими поделились с его почтой). id подходит для параметра " +
+      "sheetId рецепта sheet-site с source=drive. Если нужной таблицы нет — попроси пользователя поделиться ею с serviceAccount.",
+    input: {},
+    annotations: { readOnlyHint: true },
+    async run(store) {
+      return listGoogleSheets(store);
     },
   }),
   defineTool({

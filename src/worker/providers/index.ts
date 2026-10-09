@@ -4,6 +4,7 @@ import { Cloudflare } from "./cloudflare";
 import { GitHub } from "./github";
 import Anthropic from "@anthropic-ai/sdk";
 import { relayFetch } from "./http";
+import { GoogleDrive } from "./google";
 import { Render } from "./render";
 import { Supabase } from "./supabase";
 import { Telegram, chatLabel } from "./telegram";
@@ -118,6 +119,25 @@ export const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
+    id: "google",
+    name: "Google Drive",
+    summary: "Приватные Google-таблицы как источник данных для сайтов — без публикации в интернете",
+    tokenUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
+    tokenLinkLabel: "сервисные аккаунты в Google Cloud",
+    secretMultiline: true,
+    steps: [
+      "Выберите или создайте проект Google Cloud (вверху страницы).",
+      "APIs & Services → Library → Google Drive API → Enable.",
+      "IAM & Admin → Service Accounts → Create service account, имя — например, apphub. Роли не нужны.",
+      "Откройте аккаунт → Keys → Add key → Create new key → JSON. Скачается файл — вставьте его содержимое сюда целиком.",
+      "Поделитесь нужными таблицами (или папкой) с почтой аккаунта — она вида apphub@…iam.gserviceaccount.com, права «Читатель».",
+    ],
+    notes: [
+      "Аккаунт видит только то, чем с ним поделились. Его ключ кладётся в секреты репозиториев сайтов, которые читают приватные таблицы.",
+      "Если Google не даёт создать ключ (политика организации iam.disableServiceAccountKeyCreation) — используйте личный аккаунт Google, а не рабочий.",
+    ],
+  },
+  {
     id: "anthropic",
     name: "Claude API",
     summary: "Ассистент в интерфейсе apphub: создаёт и чинит проекты по описанию задачи",
@@ -193,6 +213,16 @@ export async function verifyConnection(
         );
       }
       return { provider, label: owners[0].name, accountId: owners[0].id, meta: {} };
+    }
+    case "google": {
+      const drive = new GoogleDrive(token);
+      const sheets = await drive.listSpreadsheets();
+      return {
+        provider,
+        label: drive.email,
+        accountId: drive.email,
+        meta: { sheets: String(sheets.length) },
+      };
     }
     case "anthropic": {
       const model = await new Anthropic({ apiKey: token, fetch: relayFetch, maxRetries: 1 }).models.retrieve(

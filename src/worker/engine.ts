@@ -12,6 +12,7 @@ import type { Store } from "./db";
 import { ProviderError } from "./providers/errors";
 import { Cloudflare } from "./providers/cloudflare";
 import { GitHub } from "./providers/github";
+import { GoogleDrive } from "./providers/google";
 import { Render, type RenderDeploy, type RenderDeployStatus } from "./providers/render";
 import { Supabase, type SupabaseProjectStatus } from "./providers/supabase";
 import type { CloudflareAccess, GitHubAccess, Recipe, RenderAccess, SupabaseAccess } from "./recipes/types";
@@ -21,14 +22,16 @@ interface Clients {
   cloudflare: CloudflareAccess | null;
   supabase: SupabaseAccess | null;
   render: RenderAccess | null;
+  google: GoogleDrive | null;
 }
 
 async function loadClients(store: Store): Promise<Clients> {
-  const [gh, cf, sb, rn] = await Promise.all([
+  const [gh, cf, sb, rn, gd] = await Promise.all([
     store.getConnection("github"),
     store.getConnection("cloudflare"),
     store.getConnection("supabase"),
     store.getConnection("render"),
+    store.getConnection("google"),
   ]);
   return {
     github: gh ? { client: new GitHub(gh.token), login: gh.accountId } : null,
@@ -42,12 +45,18 @@ async function loadClients(store: Store): Promise<Clients> {
       : null,
     supabase: sb ? { client: new Supabase(sb.token), organizationSlug: sb.accountId } : null,
     render: rn ? { client: new Render(rn.token), ownerId: rn.accountId } : null,
+    google: gd ? new GoogleDrive(gd.token) : null,
   };
 }
 
-export async function missingConnections(store: Store, recipe: Recipe): Promise<ProviderId[]> {
+export async function missingConnections(
+  store: Store,
+  recipe: Recipe,
+  params: Record<string, string> = {},
+): Promise<ProviderId[]> {
   const connected = new Set((await store.listConnections()).map((c) => c.provider));
-  return recipe.requires.filter((p) => !connected.has(p));
+  const required = [...recipe.requires, ...(recipe.requiresFor?.(params) ?? [])];
+  return required.filter((p) => !connected.has(p));
 }
 
 export async function provision(store: Store, recipe: Recipe, project: Project): Promise<void> {
@@ -65,6 +74,7 @@ export async function provision(store: Store, recipe: Recipe, project: Project):
       cloudflare: () => require(clients.cloudflare, "cloudflare"),
       supabase: () => require(clients.supabase, "supabase"),
       render: () => require(clients.render, "render"),
+      google: () => require(clients.google, "google"),
       log: (message) => store.addEvent(project.id, "info", message),
       addResource: (r) => store.addResource({ ...r, projectId: project.id }),
     });
@@ -140,6 +150,20 @@ async function checkResource(
   ctx: CheckContext,
 ): Promise<Omit<ResourceHealth, "resourceId">> {
   switch (r.type) {
+    case "google.sheet": {
+      if (!clients.google) return { state: "unknown", summary: "Google Drive не подключён" };
+      try {
+        const file = await clients.google.getFile(r.externalId);
+        return { state: "ok", summary: `Доступ есть, изменена ${new Date(file.modifiedTime).toLocaleString("ru-RU")}` };
+      } catch (e) {
+        // 404 от Drive значит, что сервисному аккаунту больше не дали доступ — сборка сломается
+        if (e instanceof ProviderError && e.status === 404) {
+          return { state: "error", summary: `Нет доступа к таблице: поделитесь ею с ${clients.google.email}` };
+        }
+        throw e;
+      }
+    }
+
     case "render.service": {
       if (!clients.render) return { state: "unknown", summary: "Render не подключён" };
       const service = await clients.render.client.getService(r.externalId);
@@ -308,6 +332,7 @@ export async function triggerDeploy(store: Store, resources: Resource[]): Promis
 
 /** Порядок удаления: сначала то, что зависит от остального (сервисы), репозиторий — последним. */
 const DELETE_ORDER: ResourceType[] = [
+  "google.sheet",
   "render.service",
   "cloudflare.worker",
   "github.pages",
@@ -331,6 +356,8 @@ export async function deleteResource(store: Store, r: Resource): Promise<void> {
     switch (r.type) {
       case "github.pages":
         return; // уходит вместе с репозиторием
+      case "google.sheet":
+        return; // таблица — данные пользователя, её не трогаем, только отвязываем от проекта
       case "github.repo":
         return await need(clients.github, "GitHub").client.deleteRepo(r.externalId);
       case "cloudflare.worker":

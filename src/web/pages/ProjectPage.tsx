@@ -18,6 +18,7 @@ const KIND_LABEL: Record<ResourceKind, string> = {
   site: "Сайт",
   service: "Сервер",
   database: "База данных",
+  data: "Данные",
 };
 
 const RUN_STATE = (status: string, conclusion: string | null) =>

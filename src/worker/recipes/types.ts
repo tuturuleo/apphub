@@ -1,6 +1,7 @@
-import type { Project, RecipeInfo, Resource } from "../../shared/types";
+import type { Project, ProviderId, RecipeInfo, Resource } from "../../shared/types";
 import type { Cloudflare } from "../providers/cloudflare";
 import type { GitHub } from "../providers/github";
+import type { GoogleDrive } from "../providers/google";
 import type { Render } from "../providers/render";
 import type { Supabase } from "../providers/supabase";
 
@@ -34,6 +35,7 @@ export interface ProvisionContext {
   cloudflare(): CloudflareAccess;
   supabase(): SupabaseAccess;
   render(): RenderAccess;
+  google(): GoogleDrive;
   log(message: string): Promise<void>;
   addResource(resource: Omit<Resource, "id" | "projectId" | "createdAt">): Promise<Resource>;
 }
@@ -44,5 +46,7 @@ export interface ProvisionContext {
 export interface Recipe extends RecipeInfo {
   /** Дополнительная проверка параметров; возвращает текст ошибки. */
   validate?(params: Record<string, string>): string | null;
+  /** Подключения, нужные только при некоторых параметрах (например, Google — для приватной таблицы). */
+  requiresFor?(params: Record<string, string>): ProviderId[];
   provision(ctx: ProvisionContext): Promise<void>;
 }
