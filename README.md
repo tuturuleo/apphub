@@ -128,8 +128,9 @@ Render бесплатный прокси (Caddy из готового образ
 - Passkey привязан к адресу. Если открывать AppHub через другой адрес (прокси для доступа без VPN), добавьте там
   отдельный passkey с кодом установки. Адресу из `X-Forwarded-Host` AppHub верит, только если прокси прислал
   секрет `PROXY_SECRET`.
-- Дополнительно можно поставить перед AppHub Cloudflare Access: заполните `ACCESS_TEAM_DOMAIN` и `ACCESS_AUD`
-  в `vars` — его JWT тоже принимается.
+- Дополнительно можно поставить перед AppHub Cloudflare Access: задайте переменные Worker `ACCESS_TEAM_DOMAIN`
+  (`<команда>.cloudflareaccess.com`) и `ACCESS_AUD` — в `vars` в `wrangler.jsonc` или в настройках Worker
+  в панели Cloudflare. Тогда его JWT тоже принимается.
 - Локально вход отключён `DEV_ALLOW_NO_AUTH=true` в `.dev.vars`; в развёрнутом AppHub этой переменной нет.
 
 Создание идёт в фоне: `POST /api/projects` записывает проект, `POST /api/projects/:id/provision` запускает

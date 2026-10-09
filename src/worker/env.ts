@@ -16,6 +16,7 @@ export interface AppEnv {
   SETUP_CODE?: string;
   /** Общий секрет с прокси (доступ без VPN): только с ним доверяем X-Forwarded-Host. */
   PROXY_SECRET?: string;
-  ACCESS_TEAM_DOMAIN: string;
-  ACCESS_AUD: string;
+  /** Необязательно: Cloudflare Access перед AppHub — домен команды и AUD приложения (переменные Worker). */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
 }

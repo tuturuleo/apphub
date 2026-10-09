@@ -24,11 +24,6 @@
   "workflows": [
     { "name": "apphub-provision", "binding": "PROVISION", "class_name": "ProvisionWorkflow" }
   ],
-  "vars": {
-    // Cloudflare Access: домен команды (например, myteam.cloudflareaccess.com) и AUD приложения
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
-  },
   // Мониторинг проектов и уведомления в Telegram (только у задеплоенного Worker)
   "triggers": { "crons": ["*/10 * * * *"] },
   "observability": { "enabled": true }
