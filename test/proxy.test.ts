@@ -10,7 +10,7 @@ describe("прокси на Render", () => {
     expect(script).toContain("--to https://apphub.example.workers.dev");
     expect(script).toContain("--change-host-header");
     expect(script).toContain("--header-up X-Apphub-Proxy:s3cret");
-    expect(script).toContain("--header-up X-Apphub-Host:{host}");
+    expect(script).toContain("--header-up X-Apphub-Host:{http.request.host}");
   });
 
   it("команда запуска без пробелов и кавычек-обёрток, sh разворачивает скрипт из переменной", () => {

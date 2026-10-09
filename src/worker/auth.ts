@@ -65,7 +65,7 @@ type Ctx = Context<{ Bindings: AppEnv; Variables: any }, any>;
 export async function publicOrigin(c: Ctx): Promise<{ origin: string; rpID: string }> {
   const url = new URL(c.req.url);
   const given = c.req.header("X-Apphub-Proxy");
-  const host = c.req.header("X-Apphub-Host") ?? c.req.header("X-Forwarded-Host");
+  const host = c.req.header("X-Apphub-Host") || c.req.header("X-Forwarded-Host");
   if (given && host && /^[a-z0-9.-]+(:\d+)?$/i.test(host)) {
     const secrets = [c.env.PROXY_SECRET, await proxySecret(new Store(c.env))].filter(Boolean) as string[];
     if (secrets.some((s) => safeEqual(given, s))) return { origin: `https://${host}`, rpID: host.split(":")[0] };

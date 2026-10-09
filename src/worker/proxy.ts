@@ -63,7 +63,8 @@ export function caddyScript(upstream: string, secret: string): string {
     `--to ${upstream}`,
     "--change-host-header",
     `--header-up X-Apphub-Proxy:${secret}`,
-    "--header-up X-Apphub-Host:{host}",
+    // в JSON-конфиге (его собирает reverse-proxy) сокращения Caddyfile вроде {host} не работают
+    "--header-up X-Apphub-Host:{http.request.host}",
   ].join(" ");
 }
 
@@ -155,7 +156,10 @@ export async function redeployProxy(store: Store, upstream: string): Promise<Pro
   if (!stored) throw new UserError("Прокси ещё не создан", 404);
   const render = await new Clients(store).render(stored.connectionId);
   if (!render) throw new UserError("Аккаунт Render прокси не подключён");
-  const secret = await decrypt(stored.secret, store.env.ENCRYPTION_KEY);
+  // Каждый перезапуск — новый секрет: старый мог попасть в логи
+  const secret = randomSecret();
+  await store.setMeta(META_KEY, JSON.stringify({ ...stored, secret: await encrypt(secret, store.env.ENCRYPTION_KEY) }));
+  cached = null;
   await render.client.setEnvVar(stored.serviceId, PROXY_ENV, caddyScript(upstream, secret));
   await render.client.updateDockerCommand(stored.serviceId, PROXY_COMMAND);
   await render.client.triggerDeploy(stored.serviceId);
