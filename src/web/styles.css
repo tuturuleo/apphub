@@ -935,3 +935,61 @@ textarea.secret {
 .topbar nav {
   flex-wrap: wrap;
 }
+
+/* --- конструктор: добавление ресурсов и связи --- */
+
+.add-resource-actions {
+  margin-top: 10px;
+}
+
+section .panel {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wire-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.wire-form select,
+.wire-form input {
+  width: auto;
+  min-width: 140px;
+  flex: 1;
+}
+
+code {
+  font-family: var(--mono);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+}
+
+.resource:has(.secret-form) {
+  flex-wrap: wrap;
+}
+
+.secret-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  padding-left: 22px;
+}
+
+.secret-form input {
+  flex: 1;
+  min-width: 240px;
+  width: auto;
+}

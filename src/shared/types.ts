@@ -2,7 +2,7 @@
 
 export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "google" | "telegram" | "anthropic";
 
-export type ResourceKind = "repo" | "site" | "service" | "database" | "data";
+export type ResourceKind = "repo" | "site" | "service" | "database" | "data" | "bot";
 
 /** Тип ресурса у конкретного провайдера, определяет, как проверять его статус. */
 export type ResourceType =
@@ -13,7 +13,8 @@ export type ResourceType =
   | "supabase.project"
   | "render.service"
   | "google.sheet"
-  | "postgres.external";
+  | "postgres.external"
+  | "telegram.bot";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -138,6 +139,8 @@ export interface DiscoveredResource {
 /** Ресурс на странице каталога: чей аккаунт и к каким проектам привязан. */
 export interface CatalogResource extends Resource {
   account: string | null;
+  /** Сохранена ли строка подключения/токен (нужно, чтобы передавать значение другим ресурсам). */
+  hasSecret: boolean;
   projects: { id: string; name: string; role: string }[];
 }
 
@@ -179,9 +182,35 @@ export interface ProjectAlert {
   createdAt: number;
 }
 
+/** Значение, которое ресурс может передать другим: строка подключения, адрес, токен. */
+export interface ResourceOutput {
+  key: string;
+  label: string;
+  secret: boolean;
+  /** false — значения пока нет (например, не задана строка подключения базы). */
+  available: boolean;
+}
+
+/** Связь: выход одного ресурса записан в переменную другого. */
+export interface Wire {
+  sourceId: string;
+  output: string;
+  targetId: string;
+  name: string;
+  appliedAt: number | null;
+  error: string | null;
+}
+
+/** Что можно создать в проекте прямо со страницы проекта. */
+export type NewResourceKind = "github-repo" | "supabase-db" | "d1-db" | "render-service" | "telegram-bot";
+
 export interface ProjectDetails {
   project: Project;
   resources: BoundResource[];
+  wires: Wire[];
+  /** Выходы ресурсов проекта и какие ресурсы могут принимать переменные. */
+  outputs: Record<string, ResourceOutput[]>;
+  consumers: string[];
   events: ProjectEvent[];
   alerts: ProjectAlert[];
 }

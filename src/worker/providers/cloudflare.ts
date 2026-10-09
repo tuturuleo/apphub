@@ -75,6 +75,15 @@ export class Cloudflare {
     return this.request("GET", `${this.account}/workers/scripts`);
   }
 
+  /** Секрет Worker'а (переменная окружения): применяется сразу, без передеплоя. */
+  async putWorkerSecret(script: string, name: string, text: string): Promise<void> {
+    await this.request("PUT", `${this.account}/workers/scripts/${script}/secrets`, { name, text, type: "secret_text" });
+  }
+
+  async deleteWorkerSecret(script: string, name: string): Promise<void> {
+    await this.request("DELETE", `${this.account}/workers/scripts/${script}/secrets/${encodeURIComponent(name)}`);
+  }
+
   async deleteD1(uuid: string): Promise<void> {
     await this.request("DELETE", `${this.account}/d1/database/${uuid}`);
   }

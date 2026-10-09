@@ -5,6 +5,8 @@ import type { Store } from "./db";
 import { projectStatus } from "./engine";
 import { collectLimits, formatAmount } from "./limits";
 import { notify, reconcileAlerts, runMonitor } from "./monitor";
+import { startResourceTask } from "./builders";
+import { connect, outputsOf } from "./wiring";
 import { PROVIDERS } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
 import {
@@ -74,7 +76,12 @@ async function projectView(store: Store, project: Project) {
     const { messages } = await reconcileAlerts(store, project, resources, status);
     await notify(store, messages);
   }
-  const [events, alerts] = await Promise.all([store.listEvents(project.id), store.listAlerts(project.id)]);
+  const [events, alerts, wires] = await Promise.all([
+    store.listEvents(project.id),
+    store.listAlerts(project.id),
+    store.listWires(project.id),
+  ]);
+  const outputs = new Map(await Promise.all(resources.map(async (r) => [r.id, await outputsOf(store, r)] as const)));
   const health = new Map(status.health.map((h) => [h.resourceId, h]));
   return {
     id: project.id,
@@ -93,6 +100,8 @@ async function projectView(store: Store, project: Project) {
         url: r.url,
         consoleUrl: r.consoleUrl,
         health: h ? { state: h.state, summary: h.summary, action: h.action?.id } : null,
+        origin: r.origin,
+        outputs: (outputs.get(r.id) ?? []).map((o) => ({ key: o.key, available: o.available })),
       };
     }),
     runs: status.runs.map((run) => ({
@@ -107,6 +116,12 @@ async function projectView(store: Store, project: Project) {
     })),
     statusError: "error" in status ? status.error : undefined,
     alerts: alerts.map((a) => ({ message: a.message, url: a.url, since: new Date(a.createdAt).toISOString() })),
+    wires: wires.map((w) => ({
+      from: `${resources.find((r) => r.id === w.sourceId)?.name}.${w.output}`,
+      to: `${resources.find((r) => r.id === w.targetId)?.name} ${w.name}`,
+      ok: !w.error && !!w.appliedAt,
+      error: w.error,
+    })),
     journal: events.slice(-20).map((e) => `${e.level === "error" ? "ОШИБКА: " : ""}${e.message}`),
   };
 }
@@ -320,6 +335,62 @@ export const TOOLS: AppTool[] = [
       const p = await findProject(store, project);
       const result = await updateProjectFiles(store, p.id, { files, remove, message });
       return { ...result, next: "Коммит запустил деплой. Проверь get_project через 1–2 минуты." };
+    },
+  }),
+  defineTool({
+    name: "add_project_resource",
+    title: "Создать ресурс в проекте",
+    description:
+      "Создаёт новый ресурс и привязывает к проекту. kind: github-repo (params.name, visibility), supabase-db " +
+      "(params.region: emea|americas|apac), d1-db (params.name), render-service (params.repo — id репозитория проекта " +
+      "с Dockerfile, params.region: frankfurt|virginia|oregon|ohio|singapore), telegram-bot (params.token от @BotFather). " +
+      "Аккаунт — params['account.<провайдер>'] = id из list_connections, иначе по умолчанию. База Supabase и сервис " +
+      "Render создаются в фоне (минуты). Создаёт реальные ресурсы — только с согласия пользователя.",
+    input: {
+      project: projectRef,
+      kind: z.enum(["github-repo", "supabase-db", "d1-db", "render-service", "telegram-bot"]),
+      params: z.record(z.string(), z.string()).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    async run(store, { project, kind, params }) {
+      const p = await findProject(store, project);
+      const background = await startResourceTask(store, p.id, { kind, params: params ?? {} });
+      return { started: true, background, next: background ? "Создаётся в фоне — проверяй get_project." : "Готово." };
+    },
+  }),
+  defineTool({
+    name: "bind_resource",
+    title: "Привязать ресурс к проекту",
+    description: "Привязывает ресурс из каталога (list_resources) к проекту — например, общую базу к нескольким проектам.",
+    input: { project: projectRef, resourceId: z.string().describe("id из list_resources") },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    async run(store, { project, resourceId }) {
+      const p = await findProject(store, project);
+      const resource = await store.getResource(resourceId);
+      if (!resource) throw new UserError("Ресурс не найден", 404);
+      await store.bindResource(p.id, resource.id, resource.kind);
+      await store.addEvent(p.id, "info", `Привязан ресурс: ${resource.name}`);
+      return { bound: resource.name };
+    },
+  }),
+  defineTool({
+    name: "connect_resources",
+    title: "Передать значение ресурса в переменную",
+    description:
+      "Записывает выход одного ресурса проекта (outputs в get_project: DATABASE_URL, SUPABASE_URL, " +
+      "TELEGRAM_BOT_TOKEN, SERVICE_URL…) в переменную другого: env сервиса Render (с передеплоем), секрет Worker " +
+      "или секрет GitHub Actions. name — имя переменной, по умолчанию как у выхода.",
+    input: {
+      project: projectRef,
+      sourceId: z.string().describe("id ресурса-источника из get_project"),
+      output: z.string().describe("ключ выхода, например DATABASE_URL"),
+      targetId: z.string().describe("id ресурса-потребителя: сервис Render, Worker или репозиторий"),
+      name: z.string().optional().describe("имя переменной у потребителя"),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    async run(store, { project, sourceId, output, targetId, name }) {
+      const p = await findProject(store, project);
+      return connect(store, p.id, { sourceId, output, targetId, name });
     },
   }),
   defineTool({

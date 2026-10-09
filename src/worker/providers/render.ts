@@ -95,6 +95,15 @@ export class Render {
     return created.service;
   }
 
+  /** Добавляет или обновляет одну переменную окружения, остальные не трогает. Деплой не запускает. */
+  async setEnvVar(serviceId: string, key: string, value: string): Promise<void> {
+    await this.request("PUT", `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, { value });
+  }
+
+  async deleteEnvVar(serviceId: string, key: string): Promise<void> {
+    await this.request("DELETE", `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`);
+  }
+
   /** Полностью заменяет переменные окружения сервиса. Деплой не запускает. */
   async setEnvVars(serviceId: string, env: Record<string, string>): Promise<void> {
     await this.request(

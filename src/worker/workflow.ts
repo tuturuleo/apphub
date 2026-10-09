@@ -3,11 +3,20 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { Store } from "./db";
 import { provision } from "./engine";
-import type { AppEnv } from "./env";
+import { runResourceTask } from "./builders";
+import type { AppEnv, ProvisionParams } from "./env";
 import { findRecipe } from "./recipes";
 
-export class ProvisionWorkflow extends WorkflowEntrypoint<AppEnv, { projectId: string }> {
-  async run(event: Readonly<WorkflowEvent<{ projectId: string }>>, step: WorkflowStep) {
+export class ProvisionWorkflow extends WorkflowEntrypoint<AppEnv, ProvisionParams> {
+  async run(event: Readonly<WorkflowEvent<ProvisionParams>>, step: WorkflowStep) {
+    const { task } = event.payload;
+    if (task) {
+      // Отдельный ресурс в существующем проекте
+      await step.do("resource", { retries: { limit: 0, delay: 0 }, timeout: "20 minutes" }, () =>
+        runResourceTask(new Store(this.env), event.payload.projectId, task),
+      );
+      return;
+    }
     // Один шаг без повторов: рецепты создают реальные ресурсы и не идемпотентны —
     // повтор создал бы дубликаты. Ошибки provision() сам записывает в проект.
     await step.do("provision", { retries: { limit: 0, delay: 0 }, timeout: "20 minutes" }, async () => {

@@ -3,8 +3,16 @@ import { requireAccess } from "./auth";
 import { Store } from "./db";
 import { projectStatus, resourcesHealth } from "./engine";
 import type { AppEnv } from "./env";
-import { addExternalPostgres, discoverResources, importResources, removeFromCatalog } from "./catalog";
+import { startResourceTask } from "./builders";
+import {
+  addExternalPostgres,
+  discoverResources,
+  importResources,
+  parsePostgresUrl,
+  removeFromCatalog,
+} from "./catalog";
 import { runChat, type ChatMessage } from "./chat";
+import { connect, disconnect, dropWiresOf, isConsumer, outputsOf, reapplyWires } from "./wiring";
 import { handleMcp } from "./mcp";
 import { collectLimits } from "./limits";
 import { getLastRunAt, notify, reconcileAlerts, runMonitor } from "./monitor";
@@ -119,6 +127,20 @@ api.post("/connections/:id/import", async (c) => {
 
 api.post("/resources/external", async (c) => c.json(await addExternalPostgres(c.var.store, await c.req.json()), 201));
 
+// Строка подключения к базе, которую apphub не знает (например, Supabase, созданный до сохранения строк)
+api.put("/resources/:id/secret", async (c) => {
+  const store = c.var.store;
+  const resource = await store.getResource(c.req.param("id"));
+  if (!resource) throw new UserError("Ресурс не найден", 404);
+  if (resource.type !== "supabase.project" && resource.type !== "postgres.external") {
+    throw new UserError("Строку подключения можно задать только базе данных");
+  }
+  const { secret } = await c.req.json<{ secret?: string }>();
+  parsePostgresUrl(secret ?? "");
+  await store.setResourceSecret(resource.id, secret!.trim());
+  return c.body(null, 204);
+});
+
 api.delete("/resources/:id", async (c) => {
   await removeFromCatalog(c.var.store, c.req.param("id"), c.req.query("atProvider") === "1");
   return c.body(null, 204);
@@ -136,10 +158,32 @@ api.post("/projects/:id/resources", async (c) => {
   return c.body(null, 204);
 });
 
+// Новый ресурс прямо в проекте: репозиторий, база, сервис Render, Telegram-бот. Долгое — в фоне
+api.post("/projects/:id/resources/new", async (c) => {
+  const { kind, params } = await c.req.json<{ kind?: string; params?: Record<string, string> }>();
+  const background = await startResourceTask(c.var.store, c.req.param("id"), {
+    kind: kind as never,
+    params: params ?? {},
+  });
+  return c.json({ background }, background ? 202 : 201);
+});
+
+// Связи: выход одного ресурса проекта → переменная другого
+api.post("/projects/:id/wires", async (c) =>
+  c.json(await connect(c.var.store, c.req.param("id"), await c.req.json()), 201),
+);
+api.post("/projects/:id/wires/reapply", async (c) => c.json(await reapplyWires(c.var.store, c.req.param("id"))));
+api.delete("/projects/:id/wires/:targetId/:name", async (c) => {
+  await disconnect(c.var.store, c.req.param("id"), c.req.param("targetId"), c.req.param("name"));
+  return c.body(null, 204);
+});
+
 api.delete("/projects/:id/resources/:resourceId", async (c) => {
   const store = c.var.store;
   const project = await requireProject(store, c.req.param("id"));
   const resource = await store.getResource(c.req.param("resourceId"));
+  // Сначала снимаем связи ресурса — иначе переменные у потребителей останутся «висеть»
+  await dropWiresOf(store, project.id, c.req.param("resourceId"));
   await store.unbindResource(project.id, c.req.param("resourceId"));
   if (resource) await store.addEvent(project.id, "info", `Отвязан ресурс: ${resource.name}`);
   return c.body(null, 204);
@@ -167,12 +211,15 @@ api.post("/projects/:id/provision", async (c) => {
 api.get("/projects/:id", async (c) => {
   const store = c.var.store;
   const project = await settleProvisioning(store, await requireProject(store, c.req.param("id")));
-  const [resources, events, alerts] = await Promise.all([
+  const [resources, events, alerts, wires] = await Promise.all([
     store.listResources(project.id),
     store.listEvents(project.id),
     store.listAlerts(project.id),
+    store.listWires(project.id),
   ]);
-  return c.json({ project, resources, events, alerts });
+  const outputs = Object.fromEntries(await Promise.all(resources.map(async (r) => [r.id, await outputsOf(store, r)])));
+  const consumers = resources.filter(isConsumer).map((r) => r.id);
+  return c.json({ project, resources, events, alerts, wires, outputs, consumers });
 });
 
 api.get("/projects/:id/status", async (c) => {

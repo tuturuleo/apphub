@@ -32,7 +32,7 @@ export async function createSupabaseDatabase(ctx: ProvisionContext, regionGroup:
     regionGroup,
   });
   const apiUrl = `https://${created.ref}.supabase.co`;
-  await ctx.addResource({
+  const resource = await ctx.addResource({
     type: "supabase.project",
     kind: "database",
     name: `${name} (Supabase)`,
@@ -52,5 +52,8 @@ export async function createSupabaseDatabase(ctx: ProvisionContext, regionGroup:
     await sleep(5000);
   }
 
-  return { ref: created.ref, apiUrl, dbUrl: await sb.client.sessionPoolerUrl(created.ref, dbPassword) };
+  const dbUrl = await sb.client.sessionPoolerUrl(created.ref, dbPassword);
+  // Пароль базы больше нигде не узнать — сохраняем строку подключения, чтобы передавать её другим ресурсам
+  await ctx.setResourceSecret(resource.id, dbUrl);
+  return { ref: created.ref, apiUrl, dbUrl };
 }

@@ -12,6 +12,7 @@ import type {
   ResourceKind,
   ResourceOrigin,
   ResourceType,
+  Wire,
 } from "../shared/types";
 import { decrypt, encrypt } from "./crypto";
 import type { AppEnv } from "./env";
@@ -244,6 +245,7 @@ export class Store {
       this.db.prepare("DELETE FROM alerts WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM events WHERE project_id = ?").bind(id),
       // сами ресурсы остаются в каталоге — их судьбу решает вызывающий (destroyProject)
+      this.db.prepare("DELETE FROM wires WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM project_resources WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM projects WHERE id = ?").bind(id),
     ]);
@@ -280,10 +282,10 @@ export class Store {
     const [{ results: rows }, { results: links }] = await Promise.all([
       this.db
         .prepare(
-          `SELECT r.*, c.label AS account FROM resources r
+          `SELECT r.*, c.label AS account, r.secret IS NOT NULL AS has_secret FROM resources r
            LEFT JOIN connections c ON c.id = r.connection_id ORDER BY r.created_at DESC`,
         )
-        .all<ResourceRow & { account: string | null }>(),
+        .all<ResourceRow & { account: string | null; has_secret: number }>(),
       this.db
         .prepare(
           `SELECT pr.resource_id, pr.role, p.id, p.name FROM project_resources pr
@@ -294,6 +296,7 @@ export class Store {
     return rows.map((r) => ({
       ...toResource(r),
       account: r.account,
+      hasSecret: r.has_secret === 1,
       projects: links.filter((l) => l.resource_id === r.id).map(({ id, name, role }) => ({ id, name, role })),
     }));
   }
@@ -343,6 +346,7 @@ export class Store {
 
   async deleteResource(id: string): Promise<void> {
     await this.db.batch([
+      this.db.prepare("DELETE FROM wires WHERE source_id = ? OR target_id = ?").bind(id, id),
       this.db.prepare("DELETE FROM project_resources WHERE resource_id = ?").bind(id),
       this.db.prepare("DELETE FROM resources WHERE id = ?").bind(id),
     ]);
@@ -372,6 +376,65 @@ export class Store {
       .bind(resourceId)
       .first<{ n: number }>();
     return row?.n ?? 0;
+  }
+
+  async setResourceSecret(id: string, secret: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE resources SET secret = ? WHERE id = ?")
+      .bind(await encrypt(secret, this.env.ENCRYPTION_KEY), id)
+      .run();
+  }
+
+  async hasResourceSecret(id: string): Promise<boolean> {
+    const row = await this.db
+      .prepare("SELECT secret IS NOT NULL AS has FROM resources WHERE id = ?")
+      .bind(id)
+      .first<{ has: number }>();
+    return row?.has === 1;
+  }
+
+  // --- связи (выход ресурса → переменная другого ресурса) ---
+
+  async listWires(projectId: string): Promise<Wire[]> {
+    const { results } = await this.db
+      .prepare("SELECT * FROM wires WHERE project_id = ? ORDER BY created_at")
+      .bind(projectId)
+      .all<{
+        source_id: string;
+        output: string;
+        target_id: string;
+        name: string;
+        applied_at: number | null;
+        error: string | null;
+      }>();
+    return results.map((r) => ({
+      sourceId: r.source_id,
+      output: r.output,
+      targetId: r.target_id,
+      name: r.name,
+      appliedAt: r.applied_at,
+      error: r.error,
+    }));
+  }
+
+  async saveWire(projectId: string, wire: Wire): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO wires (project_id, source_id, output, target_id, name, applied_at, error, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, target_id, name) DO UPDATE SET
+           source_id = excluded.source_id, output = excluded.output,
+           applied_at = excluded.applied_at, error = excluded.error`,
+      )
+      .bind(projectId, wire.sourceId, wire.output, wire.targetId, wire.name, wire.appliedAt, wire.error, Date.now())
+      .run();
+  }
+
+  async deleteWire(projectId: string, targetId: string, name: string): Promise<void> {
+    await this.db
+      .prepare("DELETE FROM wires WHERE project_id = ? AND target_id = ? AND name = ?")
+      .bind(projectId, targetId, name)
+      .run();
   }
 
   // --- events ---

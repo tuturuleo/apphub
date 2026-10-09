@@ -15,10 +15,12 @@ import { GitHub } from "./providers/github";
 import { GoogleDrive } from "./providers/google";
 import { Render, type RenderDeploy, type RenderDeployStatus } from "./providers/render";
 import { Supabase, type SupabaseProjectStatus } from "./providers/supabase";
+import { Telegram } from "./providers/telegram";
 import type {
   CloudflareAccess,
   GitHubAccess,
   GoogleAccess,
+  ProvisionContext,
   Recipe,
   RenderAccess,
   SupabaseAccess,
@@ -97,44 +99,59 @@ export async function missingConnections(
 /** Ключ параметра проекта с выбранным аккаунтом провайдера. */
 export const accountParam = (provider: ProviderId) => `account.${provider}`;
 
+/**
+ * Контекст создания ресурсов для проекта: клиенты выбранных аккаунтов, журнал, регистрация ресурсов в каталоге.
+ * Общий для рецептов и для создания отдельных ресурсов в проекте.
+ */
+export async function buildContext(
+  store: Store,
+  project: Project,
+  providers: ProviderId[],
+  params: Record<string, string>,
+): Promise<ProvisionContext> {
+  // Аккаунты выбираются при создании; не выбран — аккаунт провайдера по умолчанию
+  const clients = new Clients(store);
+  const chosen = new Map<ProviderId, Access[ManagedProvider]>();
+  for (const provider of providers) {
+    if (!(provider in { github: 1, cloudflare: 1, supabase: 1, render: 1, google: 1 })) continue;
+    const access = await clients[provider as ManagedProvider](params[accountParam(provider)]);
+    if (!access) throw new Error(`Не подключён аккаунт ${provider}`);
+    chosen.set(provider, access);
+  }
+  const use = <P extends ManagedProvider>(provider: P): Access[P] => {
+    const access = chosen.get(provider);
+    if (!access) throw new Error(`Не подключён ${provider}`);
+    return access as Access[P];
+  };
+
+  return {
+    project,
+    params,
+    github: () => use("github"),
+    cloudflare: () => use("cloudflare"),
+    supabase: () => use("supabase"),
+    render: () => use("render"),
+    google: () => use("google").client,
+    log: (message) => store.addEvent(project.id, "info", message),
+    setResourceSecret: (id, secret) => store.setResourceSecret(id, secret),
+    // Ресурс заводится в каталоге с аккаунтом, через который создан, и сразу привязывается к проекту
+    addResource: async (r) => {
+      const provider = resourceProvider(r.type);
+      const resource = await store.addResource({
+        ...r,
+        connectionId: provider ? use(provider).connectionId : null,
+        origin: "created",
+      });
+      await store.bindResource(project.id, resource.id, r.kind);
+      return resource;
+    },
+  };
+}
+
 export async function provision(store: Store, recipe: Recipe, project: Project): Promise<void> {
   try {
-    // Аккаунты выбираются при создании проекта; не выбран — аккаунт провайдера по умолчанию
-    const clients = new Clients(store);
-    const chosen = new Map<ProviderId, Access[ManagedProvider]>();
-    for (const provider of requiredProviders(recipe, project.params)) {
-      if (!(provider in { github: 1, cloudflare: 1, supabase: 1, render: 1, google: 1 })) continue;
-      const access = await clients[provider as ManagedProvider](project.params[accountParam(provider)]);
-      if (!access) throw new Error(`Не подключён аккаунт ${provider}`);
-      chosen.set(provider, access);
-    }
-    const use = <P extends ManagedProvider>(provider: P): Access[P] => {
-      const access = chosen.get(provider);
-      if (!access) throw new Error(`Не подключён ${provider}`);
-      return access as Access[P];
-    };
-
-    await recipe.provision({
-      project,
-      params: project.params,
-      github: () => use("github"),
-      cloudflare: () => use("cloudflare"),
-      supabase: () => use("supabase"),
-      render: () => use("render"),
-      google: () => use("google").client,
-      log: (message) => store.addEvent(project.id, "info", message),
-      // Ресурс заводится в каталоге с аккаунтом, через который создан, и сразу привязывается к проекту
-      addResource: async (r) => {
-        const provider = resourceProvider(r.type);
-        const resource = await store.addResource({
-          ...r,
-          connectionId: provider ? use(provider).connectionId : null,
-          origin: "created",
-        });
-        await store.bindResource(project.id, resource.id, r.kind);
-        return resource;
-      },
-    });
+    const ctx = await buildContext(store, project, requiredProviders(recipe, project.params), project.params);
+    await recipe.provision(ctx);
     await store.setProjectStatus(project.id, "ready");
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -208,6 +225,20 @@ const DISCONNECTED = { state: "unknown" as const, summary: "Аккаунт ре�
 async function checkResource(r: Resource, ctx: CheckContext): Promise<Omit<ResourceHealth, "resourceId">> {
   const { clients } = ctx;
   switch (r.type) {
+    case "telegram.bot": {
+      const token = await ctx.store.getResourceSecret(r.id);
+      if (!token) return { state: "unknown", summary: "Нет токена бота" };
+      try {
+        const me = await new Telegram(token).me();
+        return { state: "ok", summary: `Бот @${me.username} отвечает` };
+      } catch (e) {
+        if (e instanceof ProviderError && e.status === 401) {
+          return { state: "error", summary: "Токен бота недействителен — его отозвали в @BotFather?" };
+        }
+        throw e;
+      }
+    }
+
     case "postgres.external": {
       const url = await ctx.store.getResourceSecret(r.id);
       if (!url) return { state: "unknown", summary: "Нет строки подключения" };
@@ -251,8 +282,13 @@ async function checkResource(r: Resource, ctx: CheckContext): Promise<Omit<Resou
     }
 
     case "github.repo": {
-      // Репозиторий без GitHub Actions (сборку делает Render) — нечего проверять в запусках
-      if (!r.meta.workflow) return { state: "ok", summary: "Сборка и деплой — в Render" };
+      // Репозиторий без GitHub Actions (например, сборку делает Render) — запусков нет, проверяем доступ
+      if (!r.meta.workflow) {
+        const gh = await clients.github(r.connectionId);
+        if (!gh) return DISCONNECTED;
+        await gh.client.getRepo(r.externalId);
+        return { state: "ok", summary: "Репозиторий доступен; сборки в GitHub Actions нет" };
+      }
       const github = await clients.github(r.connectionId);
       if (!github) return DISCONNECTED;
       const run = runHealth(ctx.latestGithubRun);
@@ -441,6 +477,7 @@ export async function triggerDeploy(store: Store, resources: Resource[]): Promis
 
 /** Порядок удаления: сначала то, что зависит от остального (сервисы), репозиторий — последним. */
 const DELETE_ORDER: ResourceType[] = [
+  "telegram.bot",
   "google.sheet",
   "postgres.external",
   "render.service",
@@ -468,7 +505,8 @@ export async function deleteAtProvider(store: Store, r: Resource): Promise<void>
         return; // уходит вместе с репозиторием
       case "google.sheet":
       case "postgres.external":
-        return; // данные и серверы пользователя не удаляем никогда
+      case "telegram.bot":
+        return; // данные, серверы и боты пользователя не удаляем никогда
       case "github.repo":
         return await need(await clients.github(r.connectionId), "GitHub").client.deleteRepo(r.externalId);
       case "cloudflare.worker":

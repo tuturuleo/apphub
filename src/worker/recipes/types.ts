@@ -46,6 +46,8 @@ export interface ProvisionContext {
   render(): RenderAccess;
   google(): GoogleDrive;
   log(message: string): Promise<void>;
+  /** Зашифрованно сохраняет секрет ресурса (строку подключения базы) — чтобы потом передавать его другим ресурсам. */
+  setResourceSecret(resourceId: string, secret: string): Promise<void>;
   addResource(resource: Omit<Resource, "id" | "createdAt" | "connectionId" | "origin">): Promise<Resource>;
 }
 

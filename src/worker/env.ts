@@ -1,7 +1,13 @@
+/** Параметры фонового Workflow: создание проекта по рецепту или отдельного ресурса в проекте (task). */
+export interface ProvisionParams {
+  projectId: string;
+  task?: { kind: import("../shared/types").NewResourceKind; params: Record<string, string> };
+}
+
 export interface AppEnv {
   DB: D1Database;
   /** Фоновое создание ресурсов проекта (src/worker/workflow.ts). */
-  PROVISION: Workflow<{ projectId: string }>;
+  PROVISION: Workflow<ProvisionParams>;
   /** base64, 32 байта — ключ AES-GCM для токенов провайдеров. */
   ENCRYPTION_KEY: string;
   /** Только для локальной разработки: пропускать проверку Cloudflare Access. */

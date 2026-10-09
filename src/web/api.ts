@@ -2,6 +2,8 @@ import type {
   AppSettings,
   CatalogResource,
   DiscoveredResource,
+  NewResourceKind,
+  Wire,
   ResourceHealth,
   ChatMessage,
   ChatResult,
@@ -57,6 +59,14 @@ export const api = {
     request<void>("POST", `/projects/${projectId}/resources`, { resourceId }),
   unbindResource: (projectId: string, resourceId: string) =>
     request<void>("DELETE", `/projects/${projectId}/resources/${resourceId}`),
+  newResource: (projectId: string, kind: NewResourceKind, params: Record<string, string>) =>
+    request<{ background: boolean }>("POST", `/projects/${projectId}/resources/new`, { kind, params }),
+  addWire: (projectId: string, wire: { sourceId: string; output: string; targetId: string; name: string }) =>
+    request<Wire>("POST", `/projects/${projectId}/wires`, wire),
+  removeWire: (projectId: string, targetId: string, name: string) =>
+    request<void>("DELETE", `/projects/${projectId}/wires/${targetId}/${encodeURIComponent(name)}`),
+  reapplyWires: (projectId: string) => request<Wire[]>("POST", `/projects/${projectId}/wires/reapply`),
+  setResourceSecret: (id: string, secret: string) => request<void>("PUT", `/resources/${id}/secret`, { secret }),
   recipes: () => request<RecipeInfo[]>("GET", "/recipes"),
   projects: () => request<ProjectSummary[]>("GET", "/projects"),
   project: (id: string) => request<ProjectDetails>("GET", `/projects/${id}`),

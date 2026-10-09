@@ -1,7 +1,7 @@
 // Данные интерфейса через TanStack Query: кеш между страницами, опрос с частотой по состоянию,
 // обновление после действий. Так видны и изменения, сделанные мимо интерфейса (через MCP, push в репо).
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ProjectStatusReport, ProviderId, ResourceActionId } from "../shared/types";
+import type { NewResourceKind, ProjectStatusReport, ProviderId, ResourceActionId } from "../shared/types";
 import { api } from "./api";
 
 export const queryClient = new QueryClient({
@@ -59,11 +59,13 @@ export const useProjects = () =>
     refetchInterval: (q) => (q.state.data?.some((p) => isBusy(p.status)) ? MEDIUM : IDLE),
   });
 
-export const useProject = (id: string) =>
+/** boostUntil — до этого момента журнал опрашивается часто: в фоне создаётся ресурс проекта. */
+export const useProject = (id: string, boostUntil = 0) =>
   useQuery({
     queryKey: keys.project(id),
     queryFn: () => api.project(id),
-    refetchInterval: (q) => (q.state.data && isBusy(q.state.data.project.status) ? FAST : IDLE / 2),
+    refetchInterval: (q) =>
+      (q.state.data && isBusy(q.state.data.project.status)) || Date.now() < boostUntil ? FAST : IDLE / 2,
   });
 
 /**
@@ -120,7 +122,7 @@ export const useDiscover = (connectionId: string | null) =>
   });
 
 /** Меняют каталог и привязки — обновляем всё, что может это показывать. */
-function useCatalogMutation<T>(mutationFn: (input: T) => Promise<unknown>) {
+function useCatalogMutation<T, R>(mutationFn: (input: T) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({ mutationFn, onSuccess: () => qc.invalidateQueries() });
 }
@@ -140,6 +142,27 @@ export const useBindResource = () =>
   useCatalogMutation((input: { projectId: string; resourceId: string }) =>
     api.bindResource(input.projectId, input.resourceId),
   );
+
+export const useNewResource = () =>
+  useCatalogMutation((input: { projectId: string; kind: NewResourceKind; params: Record<string, string> }) =>
+    api.newResource(input.projectId, input.kind, input.params),
+  );
+
+export const useAddWire = () =>
+  useCatalogMutation(
+    (input: { projectId: string; wire: { sourceId: string; output: string; targetId: string; name: string } }) =>
+      api.addWire(input.projectId, input.wire),
+  );
+
+export const useRemoveWire = () =>
+  useCatalogMutation((input: { projectId: string; targetId: string; name: string }) =>
+    api.removeWire(input.projectId, input.targetId, input.name),
+  );
+
+export const useReapplyWires = () => useCatalogMutation((projectId: string) => api.reapplyWires(projectId));
+
+export const useSetResourceSecret = () =>
+  useCatalogMutation((input: { id: string; secret: string }) => api.setResourceSecret(input.id, input.secret));
 
 export const useUnbindResource = () =>
   useCatalogMutation((input: { projectId: string; resourceId: string }) =>

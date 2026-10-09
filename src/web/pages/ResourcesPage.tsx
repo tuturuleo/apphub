@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { CatalogResource, ResourceKind, ResourceOrigin } from "../../shared/types";
+import { KIND_LABEL, ORIGIN_LABEL } from "../../shared/labels";
+import type { CatalogResource } from "../../shared/types";
 import { ErrorNote, ExternalLink, Loading, StatusDot } from "../components";
 import {
   errorMessage,
@@ -10,22 +11,11 @@ import {
   useRemoveResource,
   useResources,
   useResourcesStatus,
+  useSetResourceSecret,
 } from "../queries";
 import { href } from "../router";
 
-const KIND_LABEL: Record<ResourceKind, string> = {
-  repo: "Репозиторий",
-  site: "Сайт",
-  service: "Сервер",
-  database: "База данных",
-  data: "Данные",
-};
 
-const ORIGIN_LABEL: Record<ResourceOrigin, string> = {
-  created: "создан apphub",
-  imported: "импортирован",
-  external: "внешний",
-};
 
 // Провайдеры, в аккаунтах которых есть что искать
 const DISCOVERABLE = new Set(["github", "cloudflare", "supabase", "render", "google"]);
@@ -37,6 +27,7 @@ export function ResourcesPage() {
   const status = useResourcesStatus();
   const remove = useRemoveResource();
   const [panel, setPanel] = useState<Panel>("none");
+  const [secretFor, setSecretFor] = useState<string | null>(null);
   const health = new Map(status.data?.map((h) => [h.resourceId, h]));
 
   function removeResource(r: CatalogResource) {
@@ -103,6 +94,11 @@ export function ResourcesPage() {
               <div className="links">
                 {r.url && <ExternalLink url={r.url}>Открыть</ExternalLink>}
                 {r.consoleUrl && <ExternalLink url={r.consoleUrl}>Консоль</ExternalLink>}
+                {(r.type === "supabase.project" || r.type === "postgres.external") && (
+                  <button className="link-button" onClick={() => setSecretFor(secretFor === r.id ? null : r.id)}>
+                    {r.hasSecret ? "Сменить строку подключения" : "Задать строку подключения"}
+                  </button>
+                )}
                 <button
                   className="link-button link-danger"
                   onClick={() => removeResource(r)}
@@ -112,6 +108,7 @@ export function ResourcesPage() {
                   {r.origin === "created" ? "Удалить" : "Убрать"}
                 </button>
               </div>
+              {secretFor === r.id && <SecretForm resourceId={r.id} onDone={() => setSecretFor(null)} />}
             </li>
           );
         })}
@@ -244,6 +241,34 @@ function ExternalPanel({ onDone }: { onDone: () => void }) {
           Отмена
         </button>
       </div>
+    </form>
+  );
+}
+
+/** Строка подключения к базе — чтобы apphub мог передавать DATABASE_URL сервисам проектов. */
+function SecretForm({ resourceId, onDone }: { resourceId: string; onDone: () => void }) {
+  const save = useSetResourceSecret();
+  const [value, setValue] = useState("");
+  return (
+    <form
+      className="secret-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate({ id: resourceId, secret: value }, { onSuccess: onDone });
+      }}
+    >
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="postgresql://… (Supabase: Connect → Session pooler)"
+        autoComplete="off"
+        required
+      />
+      <button className="button" type="submit" disabled={save.isPending}>
+        Сохранить
+      </button>
+      <ErrorNote message={errorMessage(save.error)} />
     </form>
   );
 }

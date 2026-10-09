@@ -1,18 +1,12 @@
 // Мониторинг проектов: по расписанию (cron) или по кнопке проверяет статусы ресурсов,
 // открывает и закрывает алерты и шлёт в Telegram только изменения — новую проблему или её исправление.
-import type { MonitorResult, Project, ProjectStatusReport, Resource, ResourceKind } from "../shared/types";
+import type { MonitorResult, Project, ProjectStatusReport, Resource } from "../shared/types";
+import { KIND_LABEL } from "../shared/labels";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
 import { collectLimits, limitTransitions } from "./limits";
 import { Telegram, escapeHtml } from "./providers/telegram";
 
-const KIND_LABEL: Record<ResourceKind, string> = {
-  repo: "Репозиторий",
-  site: "Сайт",
-  service: "Сервер",
-  database: "База данных",
-  data: "Данные",
-};
 
 export interface AlertCandidate {
   key: string;

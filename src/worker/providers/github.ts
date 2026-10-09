@@ -162,6 +162,10 @@ export class GitHub {
     });
   }
 
+  async deleteActionsSecret(fullName: string, name: string): Promise<void> {
+    await this.request("DELETE", `/repos/${fullName}/actions/secrets/${name}`);
+  }
+
   /** Включает GitHub Pages с публикацией из Actions. */
   async enablePages(fullName: string): Promise<{ html_url: string }> {
     try {
