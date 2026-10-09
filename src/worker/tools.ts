@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
-import { projectStatus } from "./engine";
+import { Clients, projectStatus } from "./engine";
 import { collectLimits, formatAmount } from "./limits";
 import { notify, reconcileAlerts, runMonitor } from "./monitor";
 import { startResourceTask } from "./builders";
@@ -425,6 +425,28 @@ export const TOOLS: AppTool[] = [
       const p = await findProject(store, project);
       await deployProject(store, p.id);
       return { started: true, next: "Запуск появится в get_project через несколько секунд." };
+    },
+  }),
+  defineTool({
+    name: "get_resource_logs",
+    title: "Логи ресурса",
+    description:
+      "Последние логи сервиса Render (сборка, запуск, запросы) — чтобы понять, почему деплой упал или сервис не отвечает. " +
+      "Для проекта apphub это прокси без VPN.",
+    input: {
+      project: projectRef,
+      resourceId: z.string().describe("id ресурса render.service из get_project"),
+      limit: z.number().int().min(1).max(100).optional().describe("сколько строк, по умолчанию 50"),
+    },
+    annotations: { readOnlyHint: true },
+    async run(store, { project, resourceId, limit }) {
+      const p = await findProject(store, project);
+      const r = (await store.listResources(p.id)).find((x) => x.id === resourceId);
+      if (!r) throw new UserError("Ресурс не найден в проекте", 404);
+      if (r.type !== "render.service") throw new UserError("Логи пока есть только у сервисов Render");
+      const render = await new Clients(store).render(r.connectionId);
+      if (!render) throw new UserError("Аккаунт Render этого сервиса не подключён");
+      return { logs: (await render.client.logs(render.ownerId, r.externalId, limit ?? 50)).reverse() };
     },
   }),
   defineTool({

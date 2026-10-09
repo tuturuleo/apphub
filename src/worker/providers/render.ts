@@ -62,7 +62,10 @@ export class Render {
   }
 
   async owners(): Promise<{ id: string; name: string; type: string }[]> {
-    const items = await this.request<{ owner: { id: string; name: string; type: string } }[]>("GET", "/owners?limit=20");
+    const items = await this.request<{ owner: { id: string; name: string; type: string } }[]>(
+      "GET",
+      "/owners?limit=20",
+    );
     return items.map((i) => i.owner);
   }
 
@@ -118,6 +121,23 @@ export class Render {
     return created.service;
   }
 
+  /** Последние логи сервиса (сборка и работа), от новых к старым. */
+  async logs(
+    ownerId: string,
+    serviceId: string,
+    limit = 50,
+  ): Promise<{ timestamp: string; type: string; message: string }[]> {
+    const q = new URLSearchParams({ ownerId, resource: serviceId, limit: String(limit), direction: "backward" });
+    const res = await this.request<{
+      logs: { timestamp: string; message: string; labels: { name: string; value: string }[] }[];
+    }>("GET", `/logs?${q}`);
+    return res.logs.map((l) => ({
+      timestamp: l.timestamp,
+      type: l.labels.find((x) => x.name === "type")?.value ?? "",
+      message: l.message,
+    }));
+  }
+
   /** Добавляет или обновляет одну переменную окружения, остальные не трогает. Деплой не запускает. */
   async setEnvVar(serviceId: string, key: string, value: string): Promise<void> {
     await this.request("PUT", `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, { value });
@@ -140,7 +160,9 @@ export class Render {
     ownerId: string,
   ): Promise<{ id: string; name: string; plan: string | null; url: string | null; dashboardUrl: string }[]> {
     const items = await this.request<
-      { service: { id: string; name: string; dashboardUrl: string; serviceDetails?: { plan?: string; url?: string } } }[]
+      {
+        service: { id: string; name: string; dashboardUrl: string; serviceDetails?: { plan?: string; url?: string } };
+      }[]
     >("GET", `/services?ownerId=${ownerId}&limit=100`);
     return items.map(({ service }) => ({
       id: service.id,
@@ -160,7 +182,10 @@ export class Render {
   }
 
   async listDeploys(serviceId: string, limit = 5): Promise<RenderDeploy[]> {
-    const items = await this.request<{ deploy: RenderDeploy }[]>("GET", `/services/${serviceId}/deploys?limit=${limit}`);
+    const items = await this.request<{ deploy: RenderDeploy }[]>(
+      "GET",
+      `/services/${serviceId}/deploys?limit=${limit}`,
+    );
     return items.map((i) => i.deploy);
   }
 
