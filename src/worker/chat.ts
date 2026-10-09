@@ -55,7 +55,7 @@ export async function runChat(
   // Подмена сети для тестов
   opts: { fetch?: typeof fetch } = {},
 ): Promise<ChatResult> {
-  const connection = await store.getConnection("anthropic");
+  const connection = await store.defaultConnection("anthropic");
   if (!connection) throw new UserError("Подключите Claude API на странице «Подключения»");
   const last = history.at(-1);
   if (!last || last.role !== "user") throw new UserError("Последнее сообщение должно быть от пользователя");

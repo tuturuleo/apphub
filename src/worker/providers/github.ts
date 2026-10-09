@@ -62,6 +62,11 @@ export class GitHub {
     await this.request("DELETE", `/repos/${fullName}`);
   }
 
+  /** Свои репозитории аккаунта, недавно изменённые — первыми. */
+  async listRepos(): Promise<Repo[]> {
+    return this.request("GET", "/user/repos?per_page=100&affiliation=owner&sort=updated");
+  }
+
   async getRepo(fullName: string): Promise<Repo> {
     return this.request("GET", `/repos/${fullName}`);
   }

@@ -12,7 +12,8 @@ export type ResourceType =
   | "cloudflare.d1"
   | "supabase.project"
   | "render.service"
-  | "google.sheet";
+  | "google.sheet"
+  | "postgres.external";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -37,9 +38,13 @@ export interface ProviderInfo {
   notes: string[];
   /** Секрет — многострочный текст (JSON-ключ), а не короткий токен. */
   secretMultiline?: boolean;
+  /** Можно подключить несколько аккаунтов. Служебные подключения apphub (уведомления, ассистент) — по одному. */
+  multiAccount: boolean;
 }
 
+/** Подключённый аккаунт провайдера. Аккаунтов одного провайдера может быть несколько. */
 export interface Connection {
+  id: string;
   provider: ProviderId;
   label: string;
   accountId: string;
@@ -93,9 +98,14 @@ export interface Project {
   createdAt: number;
 }
 
+/** Откуда ресурс: создан apphub, найден в подключённом аккаунте или внешний (свой сервер). */
+export type ResourceOrigin = "created" | "imported" | "external";
+
+/** Ресурс каталога — существует сам по себе и может быть привязан к нескольким проектам. */
 export interface Resource {
   id: string;
-  projectId: string;
+  /** Аккаунт, через который apphub управляет ресурсом; null — у внешнего ресурса аккаунта нет. */
+  connectionId: string | null;
   type: ResourceType;
   kind: ResourceKind;
   name: string;
@@ -103,7 +113,32 @@ export interface Resource {
   url: string | null;
   consoleUrl: string | null;
   meta: Record<string, string>;
+  origin: ResourceOrigin;
   createdAt: number;
+}
+
+/** Ресурс в составе проекта: с ролью и параметрами привязки. */
+export interface BoundResource extends Resource {
+  role: string;
+  binding: Record<string, string>;
+}
+
+/** Ресурс, найденный в подключённом аккаунте, — кандидат на импорт в каталог. */
+export interface DiscoveredResource {
+  type: ResourceType;
+  kind: ResourceKind;
+  name: string;
+  externalId: string;
+  url: string | null;
+  consoleUrl: string | null;
+  meta: Record<string, string>;
+  inCatalog: boolean;
+}
+
+/** Ресурс на странице каталога: чей аккаунт и к каким проектам привязан. */
+export interface CatalogResource extends Resource {
+  account: string | null;
+  projects: { id: string; name: string; role: string }[];
 }
 
 export interface ProjectEvent {
@@ -146,14 +181,17 @@ export interface ProjectAlert {
 
 export interface ProjectDetails {
   project: Project;
-  resources: Resource[];
+  resources: BoundResource[];
   events: ProjectEvent[];
   alerts: ProjectAlert[];
 }
 
 /** Итог полного удаления проекта. */
 export interface DestroyResult {
+  /** Удалены у провайдера. */
   deleted: string[];
+  /** Отвязаны, но оставлены: нужны другим проектам, импортированы или внешние. */
+  detached: string[];
   failed: { resource: string; error: string }[];
   projectRemoved: boolean;
 }
@@ -190,6 +228,8 @@ export type LimitState = "ok" | "warn" | "full" | "info";
 export interface LimitItem {
   key: LimitKey;
   provider: ProviderId;
+  /** Аккаунт, к которому относится лимит. */
+  connectionId: string;
   label: string;
   /** null — потребление через API не узнать, показываем только лимит. */
   used: number | null;

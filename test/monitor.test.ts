@@ -4,7 +4,7 @@ import { chunkMessages, deriveAlerts } from "../src/worker/monitor";
 
 const resource = (id: string, type: Resource["type"], kind: Resource["kind"]): Resource => ({
   id,
-  projectId: "p",
+  connectionId: "conn-1",
   type,
   kind,
   name: id,
@@ -12,6 +12,7 @@ const resource = (id: string, type: Resource["type"], kind: Resource["kind"]): R
   url: `https://${id}.example`,
   consoleUrl: `https://console/${id}`,
   meta: {},
+  origin: "created",
   createdAt: 0,
 });
 

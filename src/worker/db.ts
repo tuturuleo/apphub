@@ -1,5 +1,7 @@
 // Доступ к D1: строки таблиц ↔ общие типы.
 import type {
+  BoundResource,
+  CatalogResource,
   Connection,
   Project,
   ProjectAlert,
@@ -8,12 +10,14 @@ import type {
   ProviderId,
   Resource,
   ResourceKind,
+  ResourceOrigin,
   ResourceType,
 } from "../shared/types";
 import { decrypt, encrypt } from "./crypto";
 import type { AppEnv } from "./env";
 
 interface ConnectionRow {
+  id: string;
   provider: ProviderId;
   label: string;
   account_id: string;
@@ -34,7 +38,7 @@ interface ProjectRow {
 
 interface ResourceRow {
   id: string;
-  project_id: string;
+  connection_id: string | null;
   type: ResourceType;
   kind: ResourceKind;
   name: string;
@@ -42,7 +46,13 @@ interface ResourceRow {
   url: string | null;
   console_url: string | null;
   meta: string;
+  origin: ResourceOrigin;
   created_at: number;
+}
+
+interface BindingRow extends ResourceRow {
+  role: string;
+  binding_meta: string;
 }
 
 interface EventRow {
@@ -53,6 +63,7 @@ interface EventRow {
 }
 
 const toConnection = (r: ConnectionRow): Connection => ({
+  id: r.id,
   provider: r.provider,
   label: r.label,
   accountId: r.account_id,
@@ -72,7 +83,7 @@ const toProject = (r: ProjectRow): Project => ({
 
 const toResource = (r: ResourceRow): Resource => ({
   id: r.id,
-  projectId: r.project_id,
+  connectionId: r.connection_id,
   type: r.type,
   kind: r.kind,
   name: r.name,
@@ -80,8 +91,17 @@ const toResource = (r: ResourceRow): Resource => ({
   url: r.url,
   consoleUrl: r.console_url,
   meta: JSON.parse(r.meta),
+  origin: r.origin,
   createdAt: r.created_at,
 });
+
+const toBound = (r: BindingRow): BoundResource => ({
+  ...toResource(r),
+  role: r.role,
+  binding: JSON.parse(r.binding_meta),
+});
+
+export type NewResource = Omit<Resource, "id" | "createdAt">;
 
 export class Store {
   constructor(readonly env: AppEnv) {}
@@ -90,42 +110,63 @@ export class Store {
     return this.env.DB;
   }
 
-  // --- connections ---
+  // --- подключения (аккаунты) ---
 
   async listConnections(): Promise<Connection[]> {
     const { results } = await this.db.prepare("SELECT * FROM connections ORDER BY created_at").all<ConnectionRow>();
     return results.map(toConnection);
   }
 
-  async getConnection(provider: ProviderId): Promise<(Connection & { token: string }) | null> {
-    const row = await this.db.prepare("SELECT * FROM connections WHERE provider = ?").bind(provider).first<ConnectionRow>();
-    if (!row) return null;
-    let token: string;
+  private async withToken(row: ConnectionRow): Promise<Connection & { token: string }> {
     try {
-      token = await decrypt(row.secret, this.env.ENCRYPTION_KEY);
+      return { ...toConnection(row), token: await decrypt(row.secret, this.env.ENCRYPTION_KEY) };
     } catch {
       // например, сменился ENCRYPTION_KEY
-      throw new Error(`Не удалось расшифровать токен ${provider} — подключите его заново`);
+      throw new Error(`Не удалось расшифровать токен ${row.provider} (${row.label}) — подключите его заново`);
     }
-    return { ...toConnection(row), token };
   }
 
-  async saveConnection(c: Omit<Connection, "createdAt">, token: string): Promise<void> {
+  async getConnectionById(id: string): Promise<(Connection & { token: string }) | null> {
+    const row = await this.db.prepare("SELECT * FROM connections WHERE id = ?").bind(id).first<ConnectionRow>();
+    return row ? this.withToken(row) : null;
+  }
+
+  /** Аккаунт провайдера по умолчанию — подключённый первым. */
+  async defaultConnection(provider: ProviderId): Promise<(Connection & { token: string }) | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM connections WHERE provider = ? ORDER BY created_at LIMIT 1")
+      .bind(provider)
+      .first<ConnectionRow>();
+    return row ? this.withToken(row) : null;
+  }
+
+  /** Сохраняет аккаунт: тот же аккаунт провайдера обновляется, новый — добавляется. Возвращает id. */
+  async saveConnection(c: Omit<Connection, "id" | "createdAt">, token: string): Promise<string> {
+    const secret = await encrypt(token, this.env.ENCRYPTION_KEY);
+    const row = await this.db
+      .prepare(
+        `INSERT INTO connections (id, provider, label, account_id, secret, meta, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, account_id) DO UPDATE SET
+           label = excluded.label, secret = excluded.secret, meta = excluded.meta
+         RETURNING id`,
+      )
+      .bind(crypto.randomUUID(), c.provider, c.label, c.accountId, secret, JSON.stringify(c.meta), Date.now())
+      .first<{ id: string }>();
+    return row!.id;
+  }
+
+  /** Заменяет токен существующего аккаунта (например, истёк). */
+  async replaceConnectionToken(id: string, c: Omit<Connection, "id" | "createdAt">, token: string): Promise<void> {
     const secret = await encrypt(token, this.env.ENCRYPTION_KEY);
     await this.db
-      .prepare(
-        `INSERT INTO connections (provider, label, account_id, secret, meta, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(provider) DO UPDATE SET
-           label = excluded.label, account_id = excluded.account_id,
-           secret = excluded.secret, meta = excluded.meta`,
-      )
-      .bind(c.provider, c.label, c.accountId, secret, JSON.stringify(c.meta), Date.now())
+      .prepare("UPDATE connections SET label = ?, account_id = ?, secret = ?, meta = ? WHERE id = ?")
+      .bind(c.label, c.accountId, secret, JSON.stringify(c.meta), id)
       .run();
   }
 
-  async deleteConnection(provider: ProviderId): Promise<void> {
-    await this.db.prepare("DELETE FROM connections WHERE provider = ?").bind(provider).run();
+  async deleteConnection(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM connections WHERE id = ?").bind(id).run();
   }
 
   // --- projects ---
@@ -169,11 +210,8 @@ export class Store {
     return res.meta.changes === 1;
   }
 
-  async getResource(projectId: string, id: string): Promise<Resource | null> {
-    const row = await this.db
-      .prepare("SELECT * FROM resources WHERE project_id = ? AND id = ?")
-      .bind(projectId, id)
-      .first<ResourceRow>();
+  async getResource(id: string): Promise<Resource | null> {
+    const row = await this.db.prepare("SELECT * FROM resources WHERE id = ?").bind(id).first<ResourceRow>();
     return row ? toResource(row) : null;
   }
 
@@ -205,35 +243,80 @@ export class Store {
     await this.db.batch([
       this.db.prepare("DELETE FROM alerts WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM events WHERE project_id = ?").bind(id),
-      this.db.prepare("DELETE FROM resources WHERE project_id = ?").bind(id),
+      // сами ресурсы остаются в каталоге — их судьбу решает вызывающий (destroyProject)
+      this.db.prepare("DELETE FROM project_resources WHERE project_id = ?").bind(id),
       this.db.prepare("DELETE FROM projects WHERE id = ?").bind(id),
     ]);
   }
 
-  // --- resources ---
+  // --- ресурсы и привязки ---
 
-  async listResources(projectId?: string): Promise<Resource[]> {
-    const stmt = projectId
-      ? this.db.prepare("SELECT * FROM resources WHERE project_id = ? ORDER BY created_at").bind(projectId)
-      : this.db.prepare("SELECT * FROM resources ORDER BY created_at");
-    const { results } = await stmt.all<ResourceRow>();
-    return results.map(toResource);
+  /** Ресурсы проекта с ролями привязки. */
+  async listResources(projectId: string): Promise<BoundResource[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT r.*, pr.role, pr.meta AS binding_meta FROM resources r
+         JOIN project_resources pr ON pr.resource_id = r.id
+         WHERE pr.project_id = ? ORDER BY pr.created_at`,
+      )
+      .bind(projectId)
+      .all<BindingRow>();
+    return results.map(toBound);
   }
 
-  async deleteResource(id: string): Promise<void> {
-    await this.db.prepare("DELETE FROM resources WHERE id = ?").bind(id).run();
+  /** Все привязки — для сводок по всем проектам. */
+  async listBindings(): Promise<(BoundResource & { projectId: string })[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT r.*, pr.role, pr.meta AS binding_meta, pr.project_id FROM resources r
+         JOIN project_resources pr ON pr.resource_id = r.id ORDER BY pr.created_at`,
+      )
+      .all<BindingRow & { project_id: string }>();
+    return results.map((r) => ({ ...toBound(r), projectId: r.project_id }));
   }
 
-  async addResource(r: Omit<Resource, "id" | "createdAt">): Promise<Resource> {
+  /** Каталог: все ресурсы с аккаунтом и проектами, к которым они привязаны. */
+  async listCatalog(): Promise<CatalogResource[]> {
+    const [{ results: rows }, { results: links }] = await Promise.all([
+      this.db
+        .prepare(
+          `SELECT r.*, c.label AS account FROM resources r
+           LEFT JOIN connections c ON c.id = r.connection_id ORDER BY r.created_at DESC`,
+        )
+        .all<ResourceRow & { account: string | null }>(),
+      this.db
+        .prepare(
+          `SELECT pr.resource_id, pr.role, p.id, p.name FROM project_resources pr
+           JOIN projects p ON p.id = pr.project_id ORDER BY pr.created_at`,
+        )
+        .all<{ resource_id: string; role: string; id: string; name: string }>(),
+    ]);
+    return rows.map((r) => ({
+      ...toResource(r),
+      account: r.account,
+      projects: links.filter((l) => l.resource_id === r.id).map(({ id, name, role }) => ({ id, name, role })),
+    }));
+  }
+
+  async findResource(type: ResourceType, connectionId: string | null, externalId: string): Promise<Resource | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM resources WHERE type = ? AND connection_id IS ? AND external_id = ?")
+      .bind(type, connectionId, externalId)
+      .first<ResourceRow>();
+    return row ? toResource(row) : null;
+  }
+
+  async addResource(r: NewResource, secret: string | null = null): Promise<Resource> {
     const resource: Resource = { ...r, id: crypto.randomUUID(), createdAt: Date.now() };
     await this.db
       .prepare(
-        `INSERT INTO resources (id, project_id, type, kind, name, external_id, url, console_url, meta, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO resources
+           (id, connection_id, type, kind, name, external_id, url, console_url, meta, origin, secret, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         resource.id,
-        resource.projectId,
+        resource.connectionId,
         resource.type,
         resource.kind,
         resource.name,
@@ -241,10 +324,54 @@ export class Store {
         resource.url,
         resource.consoleUrl,
         JSON.stringify(resource.meta),
+        resource.origin,
+        secret === null ? null : await encrypt(secret, this.env.ENCRYPTION_KEY),
         resource.createdAt,
       )
       .run();
     return resource;
+  }
+
+  /** Расшифрованный секрет ресурса (строка подключения внешней базы и т.п.). */
+  async getResourceSecret(id: string): Promise<string | null> {
+    const row = await this.db
+      .prepare("SELECT secret FROM resources WHERE id = ?")
+      .bind(id)
+      .first<{ secret: string | null }>();
+    return row?.secret ? decrypt(row.secret, this.env.ENCRYPTION_KEY) : null;
+  }
+
+  async deleteResource(id: string): Promise<void> {
+    await this.db.batch([
+      this.db.prepare("DELETE FROM project_resources WHERE resource_id = ?").bind(id),
+      this.db.prepare("DELETE FROM resources WHERE id = ?").bind(id),
+    ]);
+  }
+
+  async bindResource(projectId: string, resourceId: string, role: string, meta: Record<string, string> = {}) {
+    await this.db
+      .prepare(
+        `INSERT INTO project_resources (project_id, resource_id, role, meta, created_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, resource_id) DO UPDATE SET role = excluded.role, meta = excluded.meta`,
+      )
+      .bind(projectId, resourceId, role, JSON.stringify(meta), Date.now())
+      .run();
+  }
+
+  async unbindResource(projectId: string, resourceId: string): Promise<void> {
+    await this.db
+      .prepare("DELETE FROM project_resources WHERE project_id = ? AND resource_id = ?")
+      .bind(projectId, resourceId)
+      .run();
+  }
+
+  /** Сколько проектов использует ресурс. */
+  async bindingCount(resourceId: string): Promise<number> {
+    const row = await this.db
+      .prepare("SELECT COUNT(*) AS n FROM project_resources WHERE resource_id = ?")
+      .bind(resourceId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
   }
 
   // --- events ---

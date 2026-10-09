@@ -6,6 +6,7 @@ import { describeLimit, formatAmount, limitTransitions } from "../src/worker/lim
 const limit = (state: LimitItem["state"], used: number | null = 1): LimitItem => ({
   key: "supabase.projects",
   provider: "supabase",
+  connectionId: "conn-supabase",
   label: "Supabase: активные проекты",
   used,
   limit: 2,

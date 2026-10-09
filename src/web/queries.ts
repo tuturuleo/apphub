@@ -17,6 +17,8 @@ export const queryClient = new QueryClient({
 export const keys = {
   providers: ["providers"] as const,
   connections: ["connections"] as const,
+  resources: ["resources"] as const,
+  resourcesStatus: ["resources", "status"] as const,
   recipes: ["recipes"] as const,
   projects: ["projects"] as const,
   project: (id: string) => ["projects", id] as const,
@@ -78,10 +80,18 @@ export const useProjectStatus = (id: string, opts: { enabled: boolean; boostUnti
 
 // --- действия ---
 
-export function useConnect() {
+export function useAddConnection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ provider, token }: { provider: ProviderId; token: string }) => api.connect(provider, token),
+    mutationFn: ({ provider, token }: { provider: ProviderId; token: string }) => api.addConnection(provider, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.connections }),
+  });
+}
+
+export function useReplaceToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, token }: { id: string; token: string }) => api.replaceToken(id, token),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.connections }),
   });
 }
@@ -89,16 +99,63 @@ export function useConnect() {
 export function useDisconnect() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (provider: ProviderId) => api.disconnect(provider),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.connections }),
+    mutationFn: (id: string) => api.disconnect(id),
+    onSuccess: () => qc.invalidateQueries(),
   });
 }
+
+// --- каталог ресурсов ---
+
+export const useResources = () => useQuery({ queryKey: keys.resources, queryFn: api.resources });
+
+/** Статусы всех ресурсов — запросы ко всем провайдерам, поэтому раз в минуту. */
+export const useResourcesStatus = () =>
+  useQuery({ queryKey: keys.resourcesStatus, queryFn: api.resourcesStatus, staleTime: 30_000, refetchInterval: 60_000 });
+
+export const useDiscover = (connectionId: string | null) =>
+  useQuery({
+    queryKey: ["discover", connectionId],
+    queryFn: () => api.discover(connectionId!),
+    enabled: !!connectionId,
+  });
+
+/** Меняют каталог и привязки — обновляем всё, что может это показывать. */
+function useCatalogMutation<T>(mutationFn: (input: T) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn, onSuccess: () => qc.invalidateQueries() });
+}
+
+export const useImportResources = () =>
+  useCatalogMutation((input: { connectionId: string; items: { type: string; externalId: string }[] }) =>
+    api.importResources(input.connectionId, input.items),
+  );
+
+export const useAddExternalPostgres = () =>
+  useCatalogMutation((input: { name: string; url: string }) => api.addExternalPostgres(input.name, input.url));
+
+export const useRemoveResource = () =>
+  useCatalogMutation((input: { id: string; atProvider: boolean }) => api.removeResource(input.id, input.atProvider));
+
+export const useBindResource = () =>
+  useCatalogMutation((input: { projectId: string; resourceId: string }) =>
+    api.bindResource(input.projectId, input.resourceId),
+  );
+
+export const useUnbindResource = () =>
+  useCatalogMutation((input: { projectId: string; resourceId: string }) =>
+    api.unbindResource(input.projectId, input.resourceId),
+  );
 
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { recipeId: string; name: string; params: Record<string, string> }) => {
-      const { id } = await api.createProject(input.recipeId, input.name, input.params);
+    mutationFn: async (input: {
+      recipeId: string;
+      name: string;
+      params: Record<string, string>;
+      accounts: Record<string, string>;
+    }) => {
+      const { id } = await api.createProject(input.recipeId, input.name, input.params, input.accounts);
       // Создание ресурсов — долгий запрос; прогресс страница проекта получает опросом журнала.
       // Ошибки создания записываются в сам проект, поэтому здесь их не ловим.
       api.provision(id).catch(() => {}).finally(() => void qc.invalidateQueries({ queryKey: keys.project(id) }));
@@ -177,8 +234,13 @@ export function useSaveSettings() {
 
 // --- Google Drive ---
 
-export const useGoogleSheets = (enabled: boolean) =>
-  useQuery({ queryKey: keys.googleSheets, queryFn: api.googleSheets, enabled, staleTime: 30_000 });
+export const useGoogleSheets = (connectionId: string) =>
+  useQuery({
+    queryKey: [...keys.googleSheets, connectionId],
+    queryFn: () => api.googleSheets(connectionId),
+    enabled: !!connectionId,
+    staleTime: 30_000,
+  });
 
 // --- лимиты ---
 

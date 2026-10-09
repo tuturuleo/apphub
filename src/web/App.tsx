@@ -1,6 +1,7 @@
 import { ChatPage } from "./pages/ChatPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { LimitsPage } from "./pages/LimitsPage";
+import { ResourcesPage } from "./pages/ResourcesPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -25,6 +26,9 @@ export function App() {
           >
             Проекты
           </a>
+          <a href={href.resources} aria-current={route.page === "resources" ? "page" : undefined}>
+            Ресурсы
+          </a>
           <a href={href.chat} aria-current={route.page === "chat" ? "page" : undefined}>
             Ассистент
           </a>
@@ -43,6 +47,7 @@ export function App() {
         {route.page === "connections" && <ConnectionsPage />}
         {route.page === "chat" && <ChatPage />}
         {route.page === "limits" && <LimitsPage />}
+        {route.page === "resources" && <ResourcesPage />}
       </main>
     </div>
   );

@@ -4,7 +4,7 @@ import { handleMcp } from "../src/worker/mcp";
 
 // Достаточно того, что читают list_recipes и list_connections.
 const store = {
-  listConnections: async () => [{ provider: "github", label: "me", accountId: "me", meta: {}, createdAt: 0 }],
+  listConnections: async () => [{ id: "conn-github", provider: "github", label: "me", accountId: "me", meta: {}, createdAt: 0 }],
   // настройка «Пользователи в России» включена
   getMeta: async (key: string) => (key === "settings.audienceRussia" ? "true" : null),
 } as unknown as Store;

@@ -116,10 +116,26 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
     Object.fromEntries(recipe.fields.map((f) => [f.key, f.default ?? ""])),
   );
   const create = useCreateProject();
+  const connections = useConnections();
+  const [accounts, setAccounts] = useState<Record<string, string>>({});
+
+  // Провайдеры рецепта при текущих параметрах; Google — когда выбрана таблица из Drive
+  const usesDrive = recipe.fields.some(
+    (f) => f.type === "google-sheet" && (!f.showIf || f.showIf.values.includes(params[f.showIf.field])),
+  );
+  const providers = [...recipe.requires, ...(usesDrive ? (["google"] as const) : [])];
+  const accountsOf = (provider: string) => (connections.data ?? []).filter((c) => c.provider === provider);
+  // Выбор показываем, только когда у провайдера больше одного аккаунта
+  const choices = providers.filter((p) => accountsOf(p).length > 1);
+  const accountFor = (provider: string) => accounts[provider] ?? accountsOf(provider)[0]?.id ?? "";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    create.mutate({ recipeId: recipe.id, name, params }, { onSuccess: (id) => navigate(href.project(id)) });
+    const chosen = Object.fromEntries(providers.map((p) => [p, accountFor(p)]).filter(([, id]) => id));
+    create.mutate(
+      { recipeId: recipe.id, name, params, accounts: chosen },
+      { onSuccess: (id) => navigate(href.project(id)) },
+    );
   }
 
   return (
@@ -167,6 +183,22 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
             <small className="muted">Станет именем репозитория и сервисов. Латиница, цифры и дефис.</small>
           </label>
 
+          {choices.map((provider) => (
+            <label key={provider} className="field">
+              <span>Аккаунт {PROVIDER_NAMES[provider] ?? provider}</span>
+              <select
+                value={accountFor(provider)}
+                onChange={(e) => setAccounts({ ...accounts, [provider]: e.target.value })}
+              >
+                {accountsOf(provider).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+
           {recipe.fields
             .filter((f) => !f.showIf || f.showIf.values.includes(params[f.showIf.field]))
             .map((f) => (
@@ -181,7 +213,11 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
                     ))}
                   </select>
                 ) : f.type === "google-sheet" ? (
-                  <GoogleSheetSelect value={params[f.key]} onChange={(v) => setParams({ ...params, [f.key]: v })} />
+                  <GoogleSheetSelect
+                    connectionId={accountFor("google")}
+                    value={params[f.key]}
+                    onChange={(v) => setParams({ ...params, [f.key]: v })}
+                  />
                 ) : (
                   <input
                     type={f.type}
@@ -219,10 +255,18 @@ function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missin
 }
 
 /** Выбор из таблиц, которыми поделились с сервисным аккаунтом Google. */
-function GoogleSheetSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function GoogleSheetSelect({
+  connectionId,
+  value,
+  onChange,
+}: {
+  connectionId: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const connections = useConnections();
-  const connected = !!connections.data?.some((c) => c.provider === "google");
-  const sheets = useGoogleSheets(connected);
+  const connected = !!connectionId;
+  const sheets = useGoogleSheets(connectionId);
 
   if (!connections.data) return <Loading />;
   if (!connected) {

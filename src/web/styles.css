@@ -842,3 +842,96 @@ textarea.secret {
   height: 16px;
   accent-color: var(--accent);
 }
+
+/* --- аккаунты и каталог --- */
+
+.accounts {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.account {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.account-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.account .row {
+  gap: 14px;
+}
+
+.card .accounts + .row {
+  margin-top: 12px;
+}
+
+.link-danger {
+  color: var(--error);
+}
+
+.link-muted {
+  color: var(--muted);
+}
+
+.bind-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bind-row select {
+  flex: 1;
+  min-width: 220px;
+  width: auto;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.panel select {
+  max-width: 420px;
+}
+
+.discover-list {
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.discover-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.discover-list input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.topbar nav {
+  flex-wrap: wrap;
+}

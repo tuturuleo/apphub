@@ -6,11 +6,13 @@ import type { Render } from "../providers/render";
 import type { Supabase } from "../providers/supabase";
 
 export interface GitHubAccess {
+  connectionId: string;
   client: GitHub;
   login: string;
 }
 
 export interface CloudflareAccess {
+  connectionId: string;
   client: Cloudflare;
   accountId: string;
   subdomain: string;
@@ -19,13 +21,20 @@ export interface CloudflareAccess {
 }
 
 export interface SupabaseAccess {
+  connectionId: string;
   client: Supabase;
   organizationSlug: string;
 }
 
 export interface RenderAccess {
+  connectionId: string;
   client: Render;
   ownerId: string;
+}
+
+export interface GoogleAccess {
+  connectionId: string;
+  client: GoogleDrive;
 }
 
 export interface ProvisionContext {
@@ -37,7 +46,7 @@ export interface ProvisionContext {
   render(): RenderAccess;
   google(): GoogleDrive;
   log(message: string): Promise<void>;
-  addResource(resource: Omit<Resource, "id" | "projectId" | "createdAt">): Promise<Resource>;
+  addResource(resource: Omit<Resource, "id" | "createdAt" | "connectionId" | "origin">): Promise<Resource>;
 }
 
 /**

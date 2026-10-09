@@ -3,9 +3,12 @@ import type { Store } from "../src/worker/db";
 import { runChat } from "../src/worker/chat";
 
 const store = {
-  getConnection: async (provider: string) =>
-    provider === "anthropic" ? { provider, label: "", accountId: "", meta: {}, createdAt: 0, token: "sk-test" } : null,
-  listConnections: async () => [{ provider: "github", label: "me", accountId: "me", meta: {}, createdAt: 0 }],
+  defaultConnection: async (provider: string) =>
+    provider === "anthropic"
+      ? { id: "conn-anthropic", provider, label: "", accountId: "", meta: {}, createdAt: 0, token: "sk-test" }
+      : null,
+  listConnections: async () => [{ id: "conn-github", provider: "github", label: "me", accountId: "me", meta: {}, createdAt: 0 }],
+  getMeta: async () => null,
 } as unknown as Store;
 
 const message = (content: unknown[], stop_reason: string) => ({
@@ -44,7 +47,8 @@ describe("runChat", () => {
     const toolResult = (result.messages[2].content as { type: string; content: string; is_error?: boolean }[])[0];
     expect(toolResult.type).toBe("tool_result");
     expect(toolResult.is_error).toBeUndefined();
-    expect(JSON.parse(toolResult.content).find((c: { provider: string }) => c.provider === "github").connected).toBe(true);
+    const github = JSON.parse(toolResult.content).find((c: { provider: string }) => c.provider === "github");
+    expect(github.accounts).toEqual([{ id: "conn-github", label: "me", default: true }]);
 
     const first = api.requests[0];
     expect(first.model).toBe("claude-opus-5-5");
@@ -68,7 +72,7 @@ describe("runChat", () => {
   });
 
   it("без подключённого Claude API — понятная ошибка", async () => {
-    const noKey = { getConnection: async () => null } as unknown as Store;
+    const noKey = { defaultConnection: async () => null } as unknown as Store;
     await expect(runChat(noKey, [{ role: "user", content: "привет" }])).rejects.toThrow(/Подключите Claude API/);
   });
 });

@@ -4,7 +4,7 @@ import { deletionOrder } from "../src/worker/engine";
 
 const r = (type: Resource["type"]): Resource => ({
   id: type,
-  projectId: "p",
+  connectionId: "conn-1",
   type,
   kind: "repo",
   name: type,
@@ -12,6 +12,7 @@ const r = (type: Resource["type"]): Resource => ({
   url: null,
   consoleUrl: null,
   meta: {},
+  origin: "created",
   createdAt: 0,
 });
 

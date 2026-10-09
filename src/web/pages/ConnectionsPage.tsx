@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { Connection, InstructionStep, PermissionGroup, ProviderInfo } from "../../shared/types";
 import { ErrorNote, ExternalLink, Loading, StatusDot } from "../components";
-import { errorMessage, useConnect, useConnections, useDisconnect, useProviders } from "../queries";
+import {
+  errorMessage,
+  useAddConnection,
+  useConnections,
+  useDisconnect,
+  useProviders,
+  useReplaceToken,
+} from "../queries";
 
 export function ConnectionsPage() {
   const providers = useProviders();
@@ -23,131 +30,177 @@ export function ConnectionsPage() {
       </p>
       <ul className="card-list card-list-wide">
         {providers.data.map((p) => (
-          <ProviderCard
-            key={p.id}
-            provider={p}
-            connection={connections.data!.find((c) => c.provider === p.id)}
-          />
+          <ProviderCard key={p.id} provider={p} accounts={connections.data!.filter((c) => c.provider === p.id)} />
         ))}
       </ul>
     </>
   );
 }
 
-function ProviderCard({
+/** Форма токена с инструкцией провайдера — для нового аккаунта и для замены токена. */
+function TokenForm({
   provider,
-  connection,
+  submitLabel,
+  busy,
+  error,
+  onSubmit,
+  onCancel,
 }: {
   provider: ProviderInfo;
-  connection?: Connection;
+  submitLabel: string;
+  busy: boolean;
+  error: string | null;
+  onSubmit: (token: string) => void;
+  onCancel?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const [token, setToken] = useState("");
-  const connect = useConnect();
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(token);
+      }}
+    >
+      <ol className="steps">
+        <li>
+          Откройте <ExternalLink url={provider.tokenUrl}>{provider.tokenLinkLabel}</ExternalLink>.
+        </li>
+        {provider.steps.map((step, i) => (
+          <Step key={i} step={step} />
+        ))}
+      </ol>
+      {provider.notes.length > 0 && (
+        <ul className="notes">
+          {provider.notes.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+      )}
+      <label className="field">
+        <span>{provider.secretMultiline ? "Ключ (JSON)" : "Токен"}</span>
+        {provider.secretMultiline ? (
+          <textarea
+            className="secret"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            rows={5}
+            spellCheck={false}
+            placeholder='{ "type": "service_account", … }'
+            required
+          />
+        ) : (
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            required
+          />
+        )}
+      </label>
+      <ErrorNote message={error} />
+      <div className="row">
+        <button className="button" type="submit" disabled={busy}>
+          {busy ? "Проверяю…" : submitLabel}
+        </button>
+        {onCancel && (
+          <button className="button button-quiet" type="button" onClick={onCancel}>
+            Отмена
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function AccountRow({ provider, account }: { provider: ProviderInfo; account: Connection }) {
+  const [editing, setEditing] = useState(false);
+  const replace = useReplaceToken();
   const disconnect = useDisconnect();
 
-  function save(e: React.FormEvent) {
-    e.preventDefault();
-    connect.mutate(
-      { provider: provider.id, token },
-      {
-        onSuccess: () => {
-          setToken("");
-          setEditing(false);
-        },
-      },
-    );
-  }
-
   function remove() {
-    if (!confirm(`Отключить ${provider.name}? Токен будет удалён из apphub.`)) return;
-    disconnect.mutate(provider.id);
+    const message =
+      `Отключить ${provider.name} «${account.label}»? Токен будет удалён из apphub. ` +
+      "Ресурсы этого аккаунта останутся в каталоге, но apphub не сможет ими управлять, пока аккаунт не подключён снова.";
+    if (confirm(message)) disconnect.mutate(account.id);
   }
 
-  const busy = connect.isPending;
-  const error = errorMessage(connect.error ?? disconnect.error);
+  return (
+    <li className="account">
+      <div className="account-row">
+        <StatusDot state="ok" />
+        <span className="account-label">{account.label}</span>
+        {!editing && (
+          <div className="row">
+            <button className="link-button" onClick={() => setEditing(true)}>
+              Заменить токен
+            </button>
+            <button className="link-button link-danger" onClick={remove} disabled={disconnect.isPending}>
+              Отключить
+            </button>
+          </div>
+        )}
+      </div>
+      <ErrorNote message={errorMessage(disconnect.error)} />
+      {editing && (
+        <TokenForm
+          provider={provider}
+          submitLabel="Заменить"
+          busy={replace.isPending}
+          error={errorMessage(replace.error)}
+          onSubmit={(token) => replace.mutate({ id: account.id, token }, { onSuccess: () => setEditing(false) })}
+          onCancel={() => setEditing(false)}
+        />
+      )}
+    </li>
+  );
+}
 
-  const showForm = editing || !connection;
+function ProviderCard({ provider, accounts }: { provider: ProviderInfo; accounts: Connection[] }) {
+  const [adding, setAdding] = useState(false);
+  const add = useAddConnection();
+  // Нет ни одного аккаунта — форма сразу открыта
+  const showForm = adding || accounts.length === 0;
 
   return (
     <li className="card">
       <div className="card-row">
         <h2>{provider.name}</h2>
-        {connection ? (
-          <span className="badge badge-ok">
-            <StatusDot state="ok" />
-            {connection.label}
-          </span>
-        ) : (
+        {accounts.length === 0 ? (
           <span className="badge">Не подключён</span>
+        ) : (
+          accounts.length > 1 && <span className="badge badge-ok">Аккаунтов: {accounts.length}</span>
         )}
       </div>
       <p className="muted">{provider.summary}</p>
 
+      {accounts.length > 0 && (
+        <ul className="accounts">
+          {accounts.map((a) => (
+            <AccountRow key={a.id} provider={provider} account={a} />
+          ))}
+        </ul>
+      )}
+
       {showForm ? (
-        <form className="form" onSubmit={save}>
-          <ol className="steps">
-            <li>
-              Откройте <ExternalLink url={provider.tokenUrl}>{provider.tokenLinkLabel}</ExternalLink>.
-            </li>
-            {provider.steps.map((step, i) => (
-              <Step key={i} step={step} />
-            ))}
-          </ol>
-          {provider.notes.length > 0 && (
-            <ul className="notes">
-              {provider.notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          )}
-          <label className="field">
-            <span>{provider.secretMultiline ? "Ключ (JSON)" : "Токен"}</span>
-            {provider.secretMultiline ? (
-              <textarea
-                className="secret"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                rows={5}
-                spellCheck={false}
-                placeholder='{ "type": "service_account", … }'
-                required
-              />
-            ) : (
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                required
-              />
-            )}
-          </label>
-          <ErrorNote message={error} />
-          <div className="row">
-            <button className="button" type="submit" disabled={busy}>
-              {busy ? "Проверяю…" : "Подключить"}
-            </button>
-            {connection && (
-              <button className="button button-quiet" type="button" onClick={() => setEditing(false)}>
-                Отмена
-              </button>
-            )}
-          </div>
-        </form>
+        <TokenForm
+          provider={provider}
+          submitLabel={accounts.length === 0 ? "Подключить" : "Добавить аккаунт"}
+          busy={add.isPending}
+          error={errorMessage(add.error)}
+          onSubmit={(token) => add.mutate({ provider: provider.id, token }, { onSuccess: () => setAdding(false) })}
+          onCancel={accounts.length > 0 ? () => setAdding(false) : undefined}
+        />
       ) : (
-        <>
-          <ErrorNote message={errorMessage(disconnect.error)} />
+        provider.multiAccount && (
           <div className="row">
-            <button className="button button-quiet" onClick={() => setEditing(true)}>
-              Заменить токен
-            </button>
-            <button className="button button-quiet" onClick={remove} disabled={disconnect.isPending}>
-              Отключить
+            <button className="button button-quiet" onClick={() => setAdding(true)}>
+              Добавить аккаунт
             </button>
           </div>
-        </>
+        )
       )}
     </li>
   );

@@ -12,6 +12,7 @@ import { Telegram, chatLabel } from "./telegram";
 export const PROVIDERS: ProviderInfo[] = [
   {
     id: "github",
+    multiAccount: true,
     name: "GitHub",
     summary: "Репозитории, сборка в Actions, статика на Pages",
     tokenUrl: "https://github.com/settings/personal-access-tokens/new",
@@ -45,6 +46,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "cloudflare",
+    multiAccount: true,
     name: "Cloudflare",
     summary: "Workers (сервер на JS/TS), D1 (SQLite), R2, KV, cron",
     tokenUrl: "https://dash.cloudflare.com/profile/api-tokens",
@@ -65,6 +67,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "supabase",
+    multiAccount: true,
     name: "Supabase",
     summary: "Postgres, авторизация и готовый API — часто без своего сервера",
     tokenUrl: "https://supabase.com/dashboard/account/tokens",
@@ -105,6 +108,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "render",
+    multiAccount: true,
     name: "Render",
     summary: "Docker-сервисы на любом языке: Python, Go, Java… Бесплатный инстанс засыпает без запросов",
     tokenUrl: "https://dashboard.render.com/u/settings#api-keys",
@@ -120,6 +124,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "google",
+    multiAccount: true,
     name: "Google Drive",
     summary: "Приватные Google-таблицы как источник данных для сайтов — без публикации в интернете",
     tokenUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
@@ -139,6 +144,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "anthropic",
+    multiAccount: false,
     name: "Claude API",
     summary: "Ассистент в интерфейсе apphub: создаёт и чинит проекты по описанию задачи",
     tokenUrl: "https://platform.claude.com/settings/keys",
@@ -151,6 +157,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "telegram",
+    multiAccount: false,
     name: "Telegram",
     summary: "Уведомления о проблемах в проектах: упал деплой, уснула база, отключено расписание",
     tokenUrl: "https://t.me/BotFather",
@@ -175,7 +182,7 @@ export function isProviderId(id: string): id is ProviderId {
 export async function verifyConnection(
   provider: ProviderId,
   token: string,
-): Promise<Omit<Connection, "createdAt">> {
+): Promise<Omit<Connection, "id" | "createdAt">> {
   switch (provider) {
     case "github": {
       const user = await new GitHub(token).viewer();

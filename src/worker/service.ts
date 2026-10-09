@@ -1,10 +1,18 @@
 // Операции с проектами, общие для REST API интерфейса и MCP-сервера.
 import type { AppSettings, DestroyResult, Project, ProjectSummary, Resource } from "../shared/types";
 import type { Store } from "./db";
-import { deleteResource, deletionOrder, missingConnections, runResourceAction, triggerDeploy } from "./engine";
+import {
+  Clients,
+  accountParam,
+  deleteAtProvider,
+  deletionOrder,
+  missingConnections,
+  requiredProviders,
+  runResourceAction,
+  triggerDeploy,
+} from "./engine";
 import { blockingLimits, describeLimit } from "./limits";
-import { GitHub, type RepoFile } from "./providers/github";
-import { GoogleDrive } from "./providers/google";
+import type { GitHub, RepoFile } from "./providers/github";
 import { findRecipe } from "./recipes";
 
 /** Ошибка во входных данных или состоянии — показывается пользователю как есть. */
@@ -24,6 +32,8 @@ export interface NewProjectInput {
   recipeId?: string;
   name?: string;
   params?: Record<string, string>;
+  /** Аккаунт для каждого провайдера (id подключения); не указан — аккаунт по умолчанию. */
+  accounts?: Record<string, string>;
 }
 
 /** Проверяет параметры и записывает проект в статусе pending. Ресурсы создаёт provisionProject. */
@@ -55,8 +65,20 @@ export async function createProject(store: Store, input: NewProjectInput): Promi
   const missing = await missingConnections(store, recipe, params);
   if (missing.length > 0) throw new UserError(`Сначала подключите: ${missing.join(", ")}`);
 
+  // Аккаунты фиксируем в проекте сразу: подключение новых аккаунтов потом не должно его менять
+  const connections = await store.listConnections();
+  for (const provider of requiredProviders(recipe, params)) {
+    const wanted = input.accounts?.[provider];
+    const account = wanted
+      ? connections.find((c) => c.id === wanted && c.provider === provider)
+      : connections.find((c) => c.provider === provider);
+    if (!account) throw new UserError(`Аккаунт ${provider} не найден`);
+    params[accountParam(provider)] = account.id;
+  }
+
   // Упрёмся в лимит бесплатного тарифа — лучше сказать сейчас, чем упасть посреди создания
-  const blocked = await blockingLimits(store, recipe.needs);
+  const accountIds = requiredProviders(recipe, params).map((p) => params[accountParam(p)]);
+  const blocked = await blockingLimits(store, recipe.needs, accountIds);
   if (blocked.length > 0) {
     throw new UserError(
       `Не хватает бесплатного лимита — ${blocked.map(describeLimit).join("; ")}. ${blocked[0].note ?? ""}`.trim(),
@@ -147,10 +169,17 @@ export async function destroyProject(store: Store, id: string): Promise<DestroyR
     project = await requireProject(store, id);
   }
 
-  const result: DestroyResult = { deleted: [], failed: [], projectRemoved: false };
+  const result: DestroyResult = { deleted: [], detached: [], failed: [], projectRemoved: false };
   for (const resource of deletionOrder(await store.listResources(project.id))) {
+    // У провайдера удаляем только созданное apphub и больше никому не нужное; остальное — отвязываем
+    const usedElsewhere = (await store.bindingCount(resource.id)) > 1;
+    if (resource.origin !== "created" || usedElsewhere) {
+      await store.unbindResource(project.id, resource.id);
+      result.detached.push(resource.name);
+      continue;
+    }
     try {
-      await deleteResource(store, resource);
+      await deleteAtProvider(store, resource);
       await store.deleteResource(resource.id);
       await store.addEvent(project.id, "info", `Удалено: ${resource.name}`);
       result.deleted.push(resource.name);
@@ -177,15 +206,12 @@ export async function destroyProject(store: Store, id: string): Promise<DestroyR
 export async function listProjectSummaries(store: Store): Promise<ProjectSummary[]> {
   const listed = await store.listProjects();
   const projects = await Promise.all(listed.map((p) => settleProvisioning(store, p)));
-  const [resources, alerts] = await Promise.all([
-    store.listResources(),
-    store.listAlerts(),
-  ]);
+  const [bindings, alerts] = await Promise.all([store.listBindings(), store.listAlerts()]);
   return projects.map((p) => ({
     ...p,
     alerts: alerts.filter((a) => a.projectId === p.id).length,
-    links: resources
-      .filter((r) => r.projectId === p.id && r.url && r.kind !== "repo")
+    links: bindings
+      .filter((r) => r.projectId === p.id && r.url && (r.kind === "site" || r.kind === "service"))
       .map((r) => ({ label: r.kind === "site" ? "Сайт" : "Приложение", url: r.url! })),
   }));
 }
@@ -197,10 +223,10 @@ export async function deployProject(store: Store, id: string): Promise<void> {
 }
 
 export async function runAction(store: Store, projectId: string, resourceId: string, action: string): Promise<void> {
-  const resource = await store.getResource(projectId, resourceId);
-  if (!resource) throw new UserError("Ресурс не найден", 404);
+  const resource = (await store.listResources(projectId)).find((r) => r.id === resourceId);
+  if (!resource) throw new UserError("Ресурс не найден в проекте", 404);
   const message = await runResourceAction(store, resource, action);
-  await store.addEvent(resource.projectId, "info", message);
+  await store.addEvent(projectId, "info", message);
 }
 
 // --- код проекта в репозитории ---
@@ -222,9 +248,9 @@ async function repoAccess(store: Store, id: string): Promise<RepoAccess> {
   const project = await requireProject(store, id);
   const repo = (await store.listResources(project.id)).find((r) => r.type === "github.repo");
   if (!repo) throw new UserError("У проекта нет репозитория");
-  const gh = await store.getConnection("github");
-  if (!gh) throw new UserError("GitHub не подключён");
-  return { project, repo, branch: repo.meta.branch ?? "main", github: new GitHub(gh.token) };
+  const gh = await new Clients(store).github(repo.connectionId);
+  if (!gh) throw new UserError("Аккаунт GitHub этого репозитория не подключён");
+  return { project, repo, branch: repo.meta.branch ?? "main", github: gh.client };
 }
 
 function checkPath(path: string): string {
@@ -299,10 +325,10 @@ export async function updateProjectFiles(
 // --- Google Drive ---
 
 /** Таблицы, доступные сервисному аккаунту Google, — для выбора источника данных. */
-export async function listGoogleSheets(store: Store) {
-  const google = await store.getConnection("google");
+export async function listGoogleSheets(store: Store, connectionId?: string) {
+  const google = await new Clients(store).google(connectionId);
   if (!google) throw new UserError("Google Drive не подключён");
-  const drive = new GoogleDrive(google.token);
+  const drive = google.client;
   const files = await drive.listSpreadsheets();
   return {
     serviceAccount: drive.email,

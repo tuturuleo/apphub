@@ -116,19 +116,23 @@ export async function reconcileAlerts(
   return result;
 }
 
-/** Отправляет сообщения в Telegram, если он подключён. true — отправлено. */
+/** Отправляет сообщения во все подключённые чаты Telegram. true — хотя бы в один дошло. */
 export async function notify(store: Store, messages: string[]): Promise<boolean> {
   if (messages.length === 0) return false;
-  const telegram = await store.getConnection("telegram").catch(() => null);
-  if (!telegram) return false;
-  try {
-    const bot = new Telegram(telegram.token);
-    for (const chunk of chunkMessages(messages)) await bot.send(telegram.accountId, chunk);
-    return true;
-  } catch (e) {
-    console.error("Не удалось отправить уведомление в Telegram", e);
-    return false;
+  const chats = (await store.listConnections()).filter((c) => c.provider === "telegram");
+  let delivered = false;
+  for (const chat of chats) {
+    try {
+      const telegram = await store.getConnectionById(chat.id);
+      if (!telegram) continue;
+      const bot = new Telegram(telegram.token);
+      for (const chunk of chunkMessages(messages)) await bot.send(telegram.accountId, chunk);
+      delivered = true;
+    } catch (e) {
+      console.error(`Не удалось отправить уведомление в Telegram (${chat.label})`, e);
+    }
   }
+  return delivered;
 }
 
 export async function runMonitor(store: Store): Promise<MonitorResult> {

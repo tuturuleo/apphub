@@ -154,15 +154,41 @@ export const TOOLS: AppTool[] = [
   defineTool({
     name: "list_connections",
     title: "Подключения",
-    description: "Какие провайдеры подключены к apphub и под какими аккаунтами. Токены не возвращаются.",
+    description:
+      "Какие провайдеры подключены и под какими аккаунтами (у провайдера их может быть несколько). id аккаунта " +
+      "передаётся в create_project.accounts, если нужен не аккаунт по умолчанию (первый). Токены не возвращаются.",
     annotations: { readOnlyHint: true },
     input: {},
     async run(store) {
       const connections = await store.listConnections();
-      return PROVIDERS.map((p) => {
-        const c = connections.find((x) => x.provider === p.id);
-        return { provider: p.id, name: p.name, connected: !!c, account: c?.label ?? null };
-      });
+      return PROVIDERS.map((p) => ({
+        provider: p.id,
+        name: p.name,
+        accounts: connections
+          .filter((c) => c.provider === p.id)
+          .map((c, i) => ({ id: c.id, label: c.label, default: i === 0 })),
+      }));
+    },
+  }),
+  defineTool({
+    name: "list_resources",
+    title: "Каталог ресурсов",
+    description:
+      "Все ресурсы apphub: репозитории, базы, сервисы, таблицы, внешние базы — с аккаунтом, происхождением " +
+      "(created — создан apphub, imported — найден в аккаунте, external — свой сервер) и проектами, к которым привязаны.",
+    input: {},
+    annotations: { readOnlyHint: true },
+    async run(store) {
+      return (await store.listCatalog()).map((r) => ({
+        id: r.id,
+        type: r.type,
+        kind: r.kind,
+        name: r.name,
+        account: r.account,
+        origin: r.origin,
+        url: r.url,
+        projects: r.projects,
+      }));
     },
   }),
   defineTool({
@@ -238,10 +264,14 @@ export const TOOLS: AppTool[] = [
       recipe: z.string().describe("id рецепта из list_recipes"),
       name: z.string().describe("имя проекта: 3–32 символа, латиница в нижнем регистре, цифры, дефис"),
       params: z.record(z.string(), z.string()).optional().describe("параметры рецепта по key из list_recipes"),
+      accounts: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe("аккаунт для провайдера: { github: <id аккаунта> } из list_connections; по умолчанию — первый"),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    async run(store, { recipe, name, params }) {
-      const created = await createProject(store, { recipeId: recipe, name, params });
+    async run(store, { recipe, name, params, accounts }) {
+      const created = await createProject(store, { recipeId: recipe, name, params, accounts });
       const project = await startProvisioning(store, created.id);
       return {
         id: project.id,

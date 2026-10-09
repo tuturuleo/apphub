@@ -1,14 +1,16 @@
 import { Hono, type ErrorHandler } from "hono";
 import { requireAccess } from "./auth";
 import { Store } from "./db";
-import { projectStatus } from "./engine";
+import { projectStatus, resourcesHealth } from "./engine";
 import type { AppEnv } from "./env";
+import { addExternalPostgres, discoverResources, importResources, removeFromCatalog } from "./catalog";
 import { runChat, type ChatMessage } from "./chat";
 import { handleMcp } from "./mcp";
 import { collectLimits } from "./limits";
 import { getLastRunAt, notify, reconcileAlerts, runMonitor } from "./monitor";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
+import type { ProviderId } from "../shared/types";
 import { RECIPES, recipeInfo } from "./recipes";
 import {
   UserError,
@@ -50,26 +52,96 @@ api.get("/providers", (c) => c.json(PROVIDERS));
 
 api.get("/connections", async (c) => c.json(await c.var.store.listConnections()));
 
-api.put("/connections/:provider", async (c) => {
-  const provider = c.req.param("provider");
-  if (!isProviderId(provider)) return c.json({ error: "Неизвестный провайдер" }, 404);
-  const { token } = await c.req.json<{ token?: string }>();
-  if (!token?.trim()) return c.json({ error: "Пустой токен" }, 400);
-
-  let connection;
+async function verifyOrFail(provider: ProviderId, token: string) {
   try {
-    connection = await verifyConnection(provider, token.trim());
+    return await verifyConnection(provider, token);
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    throw new UserError(e instanceof Error ? e.message : String(e));
   }
-  await c.var.store.saveConnection(connection, token.trim());
-  return c.json({ ...connection, createdAt: Date.now() });
+}
+
+// Добавляет аккаунт. Тот же аккаунт провайдера (повторное подключение) обновляется, а не дублируется.
+api.post("/connections", async (c) => {
+  const { provider, token } = await c.req.json<{ provider?: string; token?: string }>();
+  if (!provider || !isProviderId(provider)) throw new UserError("Неизвестный провайдер");
+  if (!token?.trim()) throw new UserError("Пустой токен");
+  const verified = await verifyOrFail(provider, token.trim());
+  const store = c.var.store;
+  // Служебные подключения (уведомления, ассистент) — в одном экземпляре: новое заменяет прежнее
+  const single = !PROVIDERS.find((p) => p.id === provider)!.multiAccount;
+  const previous = single ? (await store.listConnections()).find((x) => x.provider === provider) : undefined;
+  let id: string;
+  if (previous) {
+    await store.replaceConnectionToken(previous.id, verified, token.trim());
+    id = previous.id;
+  } else {
+    id = await store.saveConnection(verified, token.trim());
+  }
+  return c.json((await store.listConnections()).find((x) => x.id === id), 201);
 });
 
-api.delete("/connections/:provider", async (c) => {
-  const provider = c.req.param("provider");
-  if (!isProviderId(provider)) return c.json({ error: "Неизвестный провайдер" }, 404);
-  await c.var.store.deleteConnection(provider);
+// Заменяет токен существующего аккаунта
+api.put("/connections/:id", async (c) => {
+  const store = c.var.store;
+  const existing = (await store.listConnections()).find((x) => x.id === c.req.param("id"));
+  if (!existing) throw new UserError("Аккаунт не найден", 404);
+  const { token } = await c.req.json<{ token?: string }>();
+  if (!token?.trim()) throw new UserError("Пустой токен");
+  const verified = await verifyOrFail(existing.provider, token.trim());
+  const duplicate = (await store.listConnections()).find(
+    (x) => x.id !== existing.id && x.provider === verified.provider && x.accountId === verified.accountId,
+  );
+  if (duplicate) throw new UserError(`Этот токен от другого уже подключённого аккаунта — «${duplicate.label}»`, 409);
+  await store.replaceConnectionToken(existing.id, verified, token.trim());
+  return c.json((await store.listConnections()).find((x) => x.id === existing.id));
+});
+
+// Отключает аккаунт. Ресурсы каталога остаются — у них будет пометка «аккаунт не подключён»
+api.delete("/connections/:id", async (c) => {
+  await c.var.store.deleteConnection(c.req.param("id"));
+  return c.body(null, 204);
+});
+
+// --- каталог ресурсов ---
+
+api.get("/resources", async (c) => c.json(await c.var.store.listCatalog()));
+
+// Живые статусы всех ресурсов каталога — отдельно, потому что это запросы к провайдерам
+api.get("/resources/status", async (c) => c.json(await resourcesHealth(c.var.store, await c.var.store.listCatalog())));
+
+api.get("/connections/:id/discover", async (c) => c.json(await discoverResources(c.var.store, c.req.param("id"))));
+
+api.post("/connections/:id/import", async (c) => {
+  const { items } = await c.req.json<{ items?: { type: string; externalId: string }[] }>();
+  if (!Array.isArray(items) || items.length === 0) throw new UserError("Ничего не выбрано");
+  return c.json(await importResources(c.var.store, c.req.param("id"), items), 201);
+});
+
+api.post("/resources/external", async (c) => c.json(await addExternalPostgres(c.var.store, await c.req.json()), 201));
+
+api.delete("/resources/:id", async (c) => {
+  await removeFromCatalog(c.var.store, c.req.param("id"), c.req.query("atProvider") === "1");
+  return c.body(null, 204);
+});
+
+// Привязка ресурса каталога к проекту (и отвязка) — общий ресурс может быть в нескольких проектах
+api.post("/projects/:id/resources", async (c) => {
+  const store = c.var.store;
+  const project = await requireProject(store, c.req.param("id"));
+  const { resourceId, role } = await c.req.json<{ resourceId?: string; role?: string }>();
+  const resource = resourceId ? await store.getResource(resourceId) : null;
+  if (!resource) throw new UserError("Ресурс не найден", 404);
+  await store.bindResource(project.id, resource.id, role?.trim() || resource.kind);
+  await store.addEvent(project.id, "info", `Привязан ресурс: ${resource.name}`);
+  return c.body(null, 204);
+});
+
+api.delete("/projects/:id/resources/:resourceId", async (c) => {
+  const store = c.var.store;
+  const project = await requireProject(store, c.req.param("id"));
+  const resource = await store.getResource(c.req.param("resourceId"));
+  await store.unbindResource(project.id, c.req.param("resourceId"));
+  if (resource) await store.addEvent(project.id, "info", `Отвязан ресурс: ${resource.name}`);
   return c.body(null, 204);
 });
 
@@ -139,7 +211,7 @@ api.put("/settings", async (c) => c.json(await saveSettings(c.var.store, await c
 
 // --- Google Drive ---
 
-api.get("/google/sheets", async (c) => c.json(await listGoogleSheets(c.var.store)));
+api.get("/google/sheets", async (c) => c.json(await listGoogleSheets(c.var.store, c.req.query("connection"))));
 
 // --- лимиты бесплатных тарифов ---
 
