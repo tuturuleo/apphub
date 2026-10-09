@@ -679,3 +679,91 @@ select:focus {
   margin: 6px 0 0;
   padding-left: 18px;
 }
+
+/* --- ассистент --- */
+
+.chat {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.chat-msg {
+  display: grid;
+  gap: 6px;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  overflow-wrap: anywhere;
+}
+
+.chat-user {
+  justify-self: end;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-user a {
+  color: inherit;
+}
+
+.chat-assistant {
+  justify-self: start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-assistant a {
+  color: var(--accent);
+}
+
+.chat-text {
+  white-space: pre-wrap;
+}
+
+.chat-tool {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chat-tool::before {
+  content: "⚙ ";
+}
+
+.chat-pending {
+  color: var(--muted);
+}
+
+.chat-form {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 12px 0 4px;
+  background: var(--bg);
+}
+
+.chat-form textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.chat-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}

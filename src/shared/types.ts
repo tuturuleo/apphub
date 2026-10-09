@@ -1,6 +1,6 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "telegram";
+export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "telegram" | "anthropic";
 
 export type ResourceKind = "repo" | "site" | "service" | "database";
 
@@ -141,6 +141,23 @@ export interface DestroyResult {
   deleted: string[];
   failed: { resource: string; error: string }[];
   projectRemoved: boolean;
+}
+
+/** Сообщение переписки с ассистентом в формате Claude API (интерфейсу нужны только эти поля). */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string | ChatBlock[];
+}
+
+export type ChatBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: string; [key: string]: unknown };
+
+export interface ChatResult {
+  messages: ChatMessage[];
+  stopReason: string | null;
 }
 
 export interface MonitorState {

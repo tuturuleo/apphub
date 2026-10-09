@@ -1,3 +1,4 @@
+import { ChatPage } from "./pages/ChatPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -17,8 +18,14 @@ export function App() {
           apphub
         </a>
         <nav>
-          <a href={href.projects} aria-current={route.page !== "connections" ? "page" : undefined}>
+          <a
+            href={href.projects}
+            aria-current={route.page !== "connections" && route.page !== "chat" ? "page" : undefined}
+          >
             Проекты
+          </a>
+          <a href={href.chat} aria-current={route.page === "chat" ? "page" : undefined}>
+            Ассистент
           </a>
           <a href={href.connections} aria-current={route.page === "connections" ? "page" : undefined}>
             Подключения
@@ -30,6 +37,7 @@ export function App() {
         {route.page === "new" && <NewProjectPage recipeId={route.recipeId} />}
         {route.page === "project" && <ProjectPage id={route.id} />}
         {route.page === "connections" && <ConnectionsPage />}
+        {route.page === "chat" && <ChatPage />}
       </main>
     </div>
   );

@@ -1,4 +1,6 @@
 import type {
+  ChatMessage,
+  ChatResult,
   Connection,
   DestroyResult,
   MonitorResult,
@@ -45,6 +47,7 @@ export const api = {
   provision: (id: string) => request<void>("POST", `/projects/${id}/provision`),
   resourceAction: (projectId: string, resourceId: string, action: ResourceActionId) =>
     request<void>("POST", `/projects/${projectId}/resources/${resourceId}/actions/${action}`),
+  chat: (messages: ChatMessage[]) => request<ChatResult>("POST", "/chat", { messages }),
   monitor: () => request<MonitorState>("GET", "/monitor"),
   runMonitor: () => request<MonitorResult>("POST", "/monitor/run"),
   deploy: (id: string) => request<void>("POST", `/projects/${id}/deploy`),

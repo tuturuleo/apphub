@@ -14,6 +14,7 @@
     "cf-typegen": "wrangler types --strict-vars=false"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@noble/hashes": "^2.4.0",
     "@tanstack/react-query": "^5.104.1",

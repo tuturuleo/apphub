@@ -3,6 +3,7 @@ import { requireAccess } from "./auth";
 import { Store } from "./db";
 import { projectStatus } from "./engine";
 import type { AppEnv } from "./env";
+import { runChat, type ChatMessage } from "./chat";
 import { handleMcp } from "./mcp";
 import { getLastRunAt, notify, reconcileAlerts, runMonitor } from "./monitor";
 import { ProviderError } from "./providers/errors";
@@ -117,6 +118,14 @@ api.post("/projects/:id/deploy", async (c) => {
 api.post("/projects/:id/resources/:resourceId/actions/:action", async (c) => {
   await runAction(c.var.store, c.req.param("id"), c.req.param("resourceId"), c.req.param("action"));
   return c.body(null, 202);
+});
+
+// --- ассистент ---
+
+api.post("/chat", async (c) => {
+  const { messages } = await c.req.json<{ messages?: ChatMessage[] }>();
+  if (!Array.isArray(messages) || messages.length === 0) return c.json({ error: "Пустая переписка" }, 400);
+  return c.json(await runChat(c.var.store, messages));
 });
 
 // --- мониторинг ---

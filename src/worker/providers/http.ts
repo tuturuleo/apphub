@@ -26,3 +26,9 @@ export async function providerFetch(provider: string, url: string, init: Request
     }
   }
 }
+
+/** fetch для SDK, которые ходят в сеть сами (Anthropic): в `vite dev` — через тот же ретранслятор. */
+export const relayFetch: typeof fetch = (input, init) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  return fetch(EGRESS_RELAY ? `${EGRESS_RELAY}/${url}` : url, init);
+};

@@ -2,6 +2,8 @@
 import type { Connection, ProviderId, ProviderInfo } from "../../shared/types";
 import { Cloudflare } from "./cloudflare";
 import { GitHub } from "./github";
+import Anthropic from "@anthropic-ai/sdk";
+import { relayFetch } from "./http";
 import { Render } from "./render";
 import { Supabase } from "./supabase";
 import { Telegram, chatLabel } from "./telegram";
@@ -117,6 +119,18 @@ export const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
+    id: "anthropic",
+    name: "Claude API",
+    summary: "Ассистент в интерфейсе apphub: создаёт и чинит проекты по описанию задачи",
+    tokenUrl: "https://platform.claude.com/settings/keys",
+    tokenLinkLabel: "страницу API-ключей Claude",
+    steps: ["Create Key, задайте имя — например, apphub — и скопируйте ключ сюда."],
+    notes: [
+      "Нужен ключ Claude API с оплатой по токенам — подписка Claude Pro/Max его не даёт. Без ключа apphub доступен из Claude Code через MCP.",
+      "Модель — Claude Opus 5.5. Ключ хранится только в apphub.",
+    ],
+  },
+  {
     id: "telegram",
     name: "Telegram",
     summary: "Уведомления о проблемах в проектах: упал деплой, уснула база, отключено расписание",
@@ -180,6 +194,12 @@ export async function verifyConnection(
         );
       }
       return { provider, label: owners[0].name, accountId: owners[0].id, meta: {} };
+    }
+    case "anthropic": {
+      const model = await new Anthropic({ apiKey: token, fetch: relayFetch, maxRetries: 1 }).models.retrieve(
+        "claude-opus-5-5",
+      );
+      return { provider, label: `доступна ${model.display_name}`, accountId: "anthropic", meta: {} };
     }
     case "telegram": {
       const bot = new Telegram(token);
