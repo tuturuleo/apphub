@@ -1,4 +1,4 @@
-// apphub следит сам за собой: развёрнутый экземпляр появляется в списке проектов со своим Worker, базой D1
+// AppHub следит сам за собой: развёрнутый экземпляр появляется в списке проектов со своим Worker, базой D1
 // и прокси на Render. Ресурсы помечены как импортированные — удаление проекта их у провайдера не тронет,
 // а сам проект удалить нельзя.
 import type { Project, ResourceType } from "../shared/types";
@@ -17,7 +17,7 @@ export async function selfProjectId(store: Store): Promise<string | null> {
 
 export async function assertNotSelf(store: Store, projectId: string): Promise<void> {
   if ((await selfProjectId(store)) === projectId) {
-    throw new UserError("Это сам apphub — удалить его изнутри нельзя. Удаляется он в консоли Cloudflare.");
+    throw new UserError("Это сам AppHub — удалить его изнутри нельзя. Удаляется он в консоли Cloudflare.");
   }
 }
 
@@ -35,7 +35,7 @@ async function ensureResource(
 }
 
 /**
- * Проект «apphub» для развёрнутого экземпляра. origin — адрес Worker (запрос пришёл на него, а не через прокси).
+ * Проект «AppHub» для развёрнутого экземпляра. origin — адрес Worker (запрос пришёл на него, а не через прокси).
  * Нужен аккаунт Cloudflare, в котором живёт Worker; без него попытка повторяется не чаще раза в 10 минут.
  */
 export async function ensureSelfProject(store: Store, origin: string): Promise<void> {

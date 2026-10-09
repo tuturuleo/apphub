@@ -35,11 +35,11 @@ export interface ProviderInfo {
   tokenLinkLabel: string;
   /** Пошаговая инструкция, как получить токен с нужными правами. */
   steps: InstructionStep[];
-  /** Пояснения под инструкцией: что apphub делает с токеном, ограничения тарифа. */
+  /** Пояснения под инструкцией: что AppHub делает с токеном, ограничения тарифа. */
   notes: string[];
   /** Секрет — многострочный текст (JSON-ключ), а не короткий токен. */
   secretMultiline?: boolean;
-  /** Можно подключить несколько аккаунтов. Служебные подключения apphub (уведомления, ассистент) — по одному. */
+  /** Можно подключить несколько аккаунтов. Служебные подключения AppHub (уведомления, ассистент) — по одному. */
   multiAccount: boolean;
 }
 
@@ -99,13 +99,13 @@ export interface Project {
   createdAt: number;
 }
 
-/** Откуда ресурс: создан apphub, найден в подключённом аккаунте или внешний (свой сервер). */
+/** Откуда ресурс: создан AppHub, найден в подключённом аккаунте или внешний (свой сервер). */
 export type ResourceOrigin = "created" | "imported" | "external";
 
 /** Ресурс каталога — существует сам по себе и может быть привязан к нескольким проектам. */
 export interface Resource {
   id: string;
-  /** Аккаунт, через который apphub управляет ресурсом; null — у внешнего ресурса аккаунта нет. */
+  /** Аккаунт, через который AppHub управляет ресурсом; null — у внешнего ресурса аккаунта нет. */
   connectionId: string | null;
   type: ResourceType;
   kind: ResourceKind;
@@ -242,7 +242,7 @@ export interface ChatResult {
   stopReason: string | null;
 }
 
-/** Ограничение бесплатного тарифа, которое apphub может посчитать или хотя бы показать. */
+/** Ограничение бесплатного тарифа, которое AppHub может посчитать или хотя бы показать. */
 export type LimitKey =
   | "supabase.projects"
   | "cloudflare.d1.count"

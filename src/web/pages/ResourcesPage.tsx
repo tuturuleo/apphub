@@ -145,7 +145,7 @@ function DiscoverPanel({ onDone }: { onDone: () => void }) {
     <div className="card panel">
       <h2>Найти ресурсы в аккаунте</h2>
       <p className="muted small">
-        Найденное берётся под наблюдение: статусы, проблемы, привязка к проектам. apphub такие ресурсы не создавал — и у
+        Найденное берётся под наблюдение: статусы, проблемы, привязка к проектам. AppHub такие ресурсы не создавал — и у
         провайдера никогда их не удалит.
       </p>
       <select
@@ -213,7 +213,7 @@ function ExternalPanel({ onDone }: { onDone: () => void }) {
     >
       <h2>Своя база Postgres</h2>
       <p className="muted small">
-        База на вашем сервере или у другого провайдера. Строка подключения хранится зашифрованной; apphub проверяет, что
+        База на вашем сервере или у другого провайдера. Строка подключения хранится зашифрованной; AppHub проверяет, что
         сервер принимает подключения, и сможет передавать её проектам. Сервер должен быть доступен из интернета.
       </p>
       <label className="field">
@@ -245,7 +245,7 @@ function ExternalPanel({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Строка подключения к базе — чтобы apphub мог передавать DATABASE_URL сервисам проектов. */
+/** Строка подключения к базе — чтобы AppHub мог передавать DATABASE_URL сервисам проектов. */
 function SecretForm({ resourceId, onDone }: { resourceId: string; onDone: () => void }) {
   const save = useSetResourceSecret();
   const [value, setValue] = useState("");

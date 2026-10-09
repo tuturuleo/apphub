@@ -53,7 +53,7 @@ describe("destroyProject", () => {
 
   it("сам apphub удалить из него нельзя", async () => {
     const { store, calls } = fakeStore({}, "p");
-    await expect(destroyProject(store, "p")).rejects.toThrow(/сам apphub/);
+    await expect(destroyProject(store, "p")).rejects.toThrow(/сам AppHub/);
     expect(deletedAtProvider).toEqual([]);
     expect(calls.projectDeleted).toBe(false);
   });

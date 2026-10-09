@@ -38,7 +38,7 @@ export function ProjectsPage() {
         <div className="empty">
           <h2>Пока пусто</h2>
           <p className="muted">
-            Выберите рецепт: apphub создаст репозиторий, базу и сервер на бесплатных тарифах и настроит деплой.
+            Выберите рецепт: AppHub создаст репозиторий, базу и сервер на бесплатных тарифах и настроит деплой.
           </p>
           <a className="button" href={href.newProject()}>
             Создать первый проект

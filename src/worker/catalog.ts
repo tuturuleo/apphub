@@ -105,7 +105,7 @@ export async function discoverResources(store: Store, connectionId: string): Pro
   }));
 }
 
-/** Берёт под наблюдение существующие ресурсы аккаунта. apphub их не создавал — и у провайдера не удалит. */
+/** Берёт под наблюдение существующие ресурсы аккаунта. AppHub их не создавал — и у провайдера не удалит. */
 export async function importResources(
   store: Store,
   connectionId: string,
@@ -151,7 +151,7 @@ export function parsePostgresUrl(raw: string): { host: string; port: number; dat
   };
 }
 
-/** Внешняя база (свой сервер): строка подключения хранится зашифрованной, apphub проверяет доступность сервера. */
+/** Внешняя база (свой сервер): строка подключения хранится зашифрованной, AppHub проверяет доступность сервера. */
 export async function addExternalPostgres(store: Store, input: { name?: string; url?: string }): Promise<Resource> {
   const name = input.name?.trim();
   if (!name) throw new UserError("Укажите название базы");
@@ -178,7 +178,7 @@ export async function addExternalPostgres(store: Store, input: { name?: string; 
 
 /**
  * Убирает ресурс из каталога. Привязанный к проектам — нельзя (сначала отвяжите или удалите проекты).
- * atProvider: удалить и у провайдера — только для созданных apphub; импортированные и внешние не трогаем никогда.
+ * atProvider: удалить и у провайдера — только для созданных AppHub; импортированные и внешние не трогаем никогда.
  */
 export async function removeFromCatalog(store: Store, id: string, atProvider: boolean): Promise<void> {
   const resource = await store.getResource(id);

@@ -25,7 +25,7 @@ export function ConnectionsPage() {
         <h1>Подключения</h1>
       </div>
       <p className="muted lead">
-        Аккаунт на каждой платформе заводится один раз вручную. Дальше apphub работает через токен — он хранится
+        Аккаунт на каждой платформе заводится один раз вручную. Дальше AppHub работает через токен — он хранится
         зашифрованным.
       </p>
       <ul className="card-list card-list-wide">
@@ -123,7 +123,7 @@ function AccountRow({ provider, account }: { provider: ProviderInfo; account: Co
   function remove() {
     const message =
       `Отключить ${provider.name} «${account.label}»? Токен будет удалён из apphub. ` +
-      "Ресурсы этого аккаунта останутся в каталоге, но apphub не сможет ими управлять, пока аккаунт не подключён снова.";
+      "Ресурсы этого аккаунта останутся в каталоге, но AppHub не сможет ими управлять, пока аккаунт не подключён снова.";
     if (confirm(message)) disconnect.mutate(account.id);
   }
 

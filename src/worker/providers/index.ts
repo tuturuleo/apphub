@@ -18,8 +18,8 @@ export const PROVIDERS: ProviderInfo[] = [
     tokenUrl: "https://github.com/settings/personal-access-tokens/new",
     tokenLinkLabel: "страницу токенов GitHub",
     steps: [
-      "Задайте имя токена, например apphub, и срок действия.",
-      "Repository access: All repositories — иначе apphub не сможет работать с репозиториями, которые создаст.",
+      "Задайте имя токена, например AppHub, и срок действия.",
+      "Repository access: All repositories — иначе AppHub не сможет работать с репозиториями, которые создаст.",
       {
         text: "Permissions → Repositories → Add permissions. Выставьте права, остальные оставьте No access:",
         permissions: [
@@ -75,7 +75,7 @@ export const PROVIDERS: ProviderInfo[] = [
     steps: [
       "Если организации ещё нет, сначала создайте её: supabase.com/dashboard/new → Type: Personal, Plan: Free. Проект создавать не нужно — это сделает apphub.",
       "Generate new token, имя — например, apphub.",
-      "Доступ: организация целиком, а не отдельный проект — иначе apphub не увидит проекты, которые создаст.",
+      "Доступ: организация целиком, а не отдельный проект — иначе AppHub не увидит проекты, которые создаст.",
       {
         text: "Permissions: раскройте разделы и выставьте права, остальное оставьте None:",
         permissions: [
@@ -118,7 +118,7 @@ export const PROVIDERS: ProviderInfo[] = [
       "Account Settings → API Keys → Create API Key, скопируйте ключ сюда.",
     ],
     notes: [
-      "Ограничить права ключа Render нельзя — он даёт полный доступ к аккаунту и хранится только в apphub, в репозитории не попадает.",
+      "Ограничить права ключа Render нельзя — он даёт полный доступ к аккаунту и хранится только в AppHub, в репозитории не попадает.",
       "Бесплатный сервис: 512 МБ памяти, засыпает через 15 минут без запросов и просыпается около минуты, 750 часов в месяц на аккаунт.",
     ],
   },
@@ -149,9 +149,9 @@ export const PROVIDERS: ProviderInfo[] = [
     summary: "Ассистент в интерфейсе apphub: создаёт и чинит проекты по описанию задачи",
     tokenUrl: "https://platform.claude.com/settings/keys",
     tokenLinkLabel: "страницу API-ключей Claude",
-    steps: ["Create Key, задайте имя — например, apphub — и скопируйте ключ сюда."],
+    steps: ["Create Key, задайте имя — например, AppHub — и скопируйте ключ сюда."],
     notes: [
-      "Нужен ключ Claude API с оплатой по токенам — подписка Claude Pro/Max его не даёт. Без ключа apphub доступен из Claude Code через MCP.",
+      "Нужен ключ Claude API с оплатой по токенам — подписка Claude Pro/Max его не даёт. Без ключа AppHub доступен из Claude Code через MCP.",
       "Модель — Claude Opus 5.5. Ключ хранится только в apphub.",
     ],
   },
@@ -164,12 +164,12 @@ export const PROVIDERS: ProviderInfo[] = [
     tokenLinkLabel: "@BotFather в Telegram",
     steps: [
       "Отправьте /newbot, задайте имя и username бота — BotFather пришлёт токен.",
-      "Откройте своего бота и отправьте ему любое сообщение, например /start — так apphub узнает, куда писать.",
+      "Откройте своего бота и отправьте ему любое сообщение, например /start — так AppHub узнает, куда писать.",
       "Вставьте токен сюда. В чат придёт тестовое сообщение.",
     ],
     notes: [
       "Чтобы слать уведомления в группу, добавьте бота в группу и напишите там сообщение перед подключением.",
-      "Проверка идёт по расписанию раз в 10 минут, когда apphub задеплоен. Локально — кнопкой «Проверить сейчас».",
+      "Проверка идёт по расписанию раз в 10 минут, когда AppHub задеплоен. Локально — кнопкой «Проверить сейчас».",
     ],
   },
 ];
@@ -216,7 +216,7 @@ export async function verifyConnection(
       if (owners.length === 0) throw new Error("Ключу Render не доступно ни одно рабочее пространство");
       if (owners.length > 1) {
         throw new Error(
-          `Ключу доступно несколько рабочих пространств (${owners.map((o) => o.name).join(", ")}) — apphub пока работает с одним.`,
+          `Ключу доступно несколько рабочих пространств (${owners.map((o) => o.name).join(", ")}) — AppHub пока работает с одним.`,
         );
       }
       return { provider, label: owners[0].name, accountId: owners[0].id, meta: {} };
@@ -245,7 +245,7 @@ export async function verifyConnection(
         throw new Error(`Напишите боту @${me.username} любое сообщение и нажмите «Подключить» ещё раз`);
       }
       const chatId = String(chat.id);
-      await bot.send(chatId, `✅ <b>apphub</b> подключён. Сюда будут приходить уведомления о проблемах в проектах.`);
+      await bot.send(chatId, `✅ <b>AppHub</b> подключён. Сюда будут приходить уведомления о проблемах в проектах.`);
       return {
         provider,
         label: `@${me.username} → ${chatLabel(chat)}`,

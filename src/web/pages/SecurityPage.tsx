@@ -49,7 +49,7 @@ export function SecurityPage() {
       </div>
       {auth.data?.devNoAuth && (
         <p className="note">
-          Локальная разработка: вход отключён (DEV_ALLOW_NO_AUTH). Развёрнутый apphub всегда требует passkey.
+          Локальная разработка: вход отключён (DEV_ALLOW_NO_AUTH). Развёрнутый AppHub всегда требует passkey.
         </p>
       )}
 
@@ -96,7 +96,7 @@ export function SecurityPage() {
       <section>
         <h2 className="section-title">Токены MCP</h2>
         <p className="muted">
-          Для Claude Code и других MCP-клиентов. Токен показывается один раз; в apphub хранится только его хеш.
+          Для Claude Code и других MCP-клиентов. Токен показывается один раз; в AppHub хранится только его хеш.
         </p>
         <ul className="resource-list">
           {info.data?.tokens.map((t) => (
@@ -158,7 +158,7 @@ export function SecurityPage() {
 
 const PROXY_DOT = { live: "ok", deploying: "pending", failed: "error", unknown: "unknown" } as const;
 
-/** Прокси на Render: apphub открывается по адресу onrender.com, если workers.dev недоступен без VPN. */
+/** Прокси на Render: AppHub открывается по адресу onrender.com, если workers.dev недоступен без VPN. */
 function ProxySection() {
   const qc = useQueryClient();
   const connections = useConnections();
@@ -184,7 +184,7 @@ function ProxySection() {
     <section>
       <h2 className="section-title">Доступ без VPN</h2>
       <p className="muted">
-        Если адрес apphub (workers.dev) открывается только через VPN, apphub создаст в вашем аккаунте Render прокси:
+        Если адрес AppHub (workers.dev) открывается только через VPN, AppHub создаст в вашем аккаунте Render прокси:
         бесплатный сервис, который пересылает запросы сюда. Токены через него не хранятся — он только передаёт трафик.
         На новом адресе нужен свой passkey: войдите там с кодом установки. Бесплатный сервис засыпает без запросов —
         первый вход после паузы около минуты.
@@ -221,7 +221,7 @@ function ProxySection() {
             <button
               className="button button-quiet"
               disabled={remove.isPending || viaProxy}
-              title={viaProxy ? "Удалять прокси, открыв apphub через него, нельзя" : undefined}
+              title={viaProxy ? "Удалять прокси, открыв AppHub через него, нельзя" : undefined}
               onClick={() => confirm("Удалить прокси в Render? Адрес перестанет работать.") && remove.mutate()}
             >
               Удалить

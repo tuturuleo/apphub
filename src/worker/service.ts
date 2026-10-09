@@ -172,7 +172,7 @@ export async function destroyProject(store: Store, id: string): Promise<DestroyR
 
   const result: DestroyResult = { deleted: [], detached: [], failed: [], projectRemoved: false };
   for (const resource of deletionOrder(await store.listResources(project.id))) {
-    // У провайдера удаляем только созданное apphub и больше никому не нужное; остальное — отвязываем
+    // У провайдера удаляем только созданное AppHub и больше никому не нужное; остальное — отвязываем
     const usedElsewhere = (await store.bindingCount(resource.id)) > 1;
     if (resource.origin !== "created" || usedElsewhere) {
       try {

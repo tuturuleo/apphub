@@ -428,7 +428,7 @@ async function accessHealth(r: Resource, ctx: CheckContext): Promise<ResourceHea
     return resourceHealth(r, ctx);
   } catch (e) {
     if (e instanceof ProviderError && e.status === 404) {
-      return { resourceId: r.id, state: "error", summary: "Не найден у провайдера — удалён вне apphub?" };
+      return { resourceId: r.id, state: "error", summary: "Не найден у провайдера — удалён вне AppHub?" };
     }
     return { resourceId: r.id, state: "unknown", summary: `Не удалось проверить: ${e instanceof Error ? e.message : String(e)}` };
   }

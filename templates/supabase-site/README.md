@@ -1,6 +1,6 @@
 # %%PROJECT_NAME%%
 
-Создано в apphub по рецепту «Сайт + Postgres».
+Создано в AppHub по рецепту «Сайт + Postgres».
 
 - `public/` — статический сайт, публикуется на GitHub Pages
 - `supabase/migrations/` — схема базы; новые миграции применяются при каждом деплое

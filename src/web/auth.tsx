@@ -72,9 +72,9 @@ function LoginScreen({ configured, setupCodeSet }: { configured: boolean; setupC
   if (!browserSupportsWebAuthn()) {
     return (
       <div className="auth-screen">
-        <h1>apphub</h1>
+        <h1>AppHub</h1>
         <p className="note note-error">
-          Этот браузер не поддерживает passkeys. Откройте apphub в свежем Chrome, Safari или Firefox.
+          Этот браузер не поддерживает passkeys. Откройте AppHub в свежем Chrome, Safari или Firefox.
         </p>
       </div>
     );
@@ -86,7 +86,7 @@ function LoginScreen({ configured, setupCodeSet }: { configured: boolean; setupC
         <span className="brand-mark" aria-hidden>
           ▲
         </span>{" "}
-        apphub
+        AppHub
       </h1>
       {mode === "login" ? (
         <>

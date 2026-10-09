@@ -1,6 +1,6 @@
 # %%PROJECT_NAME%%
 
-Создано в apphub по рецепту «Docker-сервис + Postgres».
+Создано в AppHub по рецепту «Docker-сервис + Postgres».
 
 - `Dockerfile` — сборка образа; Render собирает его при каждом push в `main`
 - `app/` — API на FastAPI и страница `app/static/index.html`

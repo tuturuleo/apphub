@@ -17,7 +17,7 @@ async function adminUrl(store: Store, r: Resource): Promise<string> {
   const url = await store.getResourceSecret(r.id);
   if (!url) {
     throw new UserError(
-      `Чтобы изолировать проект в «${r.name}», apphub нужна строка подключения базы — задайте её в каталоге ресурсов`,
+      `Чтобы изолировать проект в «${r.name}», AppHub нужна строка подключения базы — задайте её в каталоге ресурсов`,
     );
   }
   return url;

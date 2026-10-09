@@ -43,7 +43,7 @@ const BUILDERS: Record<Exclude<NewResourceKind, "telegram-bot">, Builder> = {
       await ctx.log(`Создаю репозиторий ${p.name}…`);
       const repo = await gh.client.createRepo({
         name: p.name,
-        description: `Создано в apphub для проекта ${ctx.project.name}`,
+        description: `Создано в AppHub для проекта ${ctx.project.name}`,
         private: p.visibility !== "public",
       });
       await ctx.addResource({
@@ -181,7 +181,7 @@ export async function runResourceTask(store: Store, projectId: string, task: Res
   }
 }
 
-/** Telegram-бот: apphub его не создаёт (это делает @BotFather) — проверяет токен и хранит его зашифрованным. */
+/** Telegram-бот: AppHub его не создаёт (это делает @BotFather) — проверяет токен и хранит его зашифрованным. */
 async function addTelegramBot(store: Store, projectId: string, token: string): Promise<void> {
   if (!token?.trim()) throw new UserError("Вставьте токен бота от @BotFather");
   const me = await new Telegram(token.trim()).me().catch(() => {

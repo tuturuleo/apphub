@@ -92,7 +92,7 @@ export function ProjectPage({ id }: { id: string }) {
   }
 
   function removeProject() {
-    if (!confirm(`Убрать «${project.name}» из apphub? Репозиторий и сервисы у провайдеров останутся.`)) return;
+    if (!confirm(`Убрать «${project.name}» из AppHub? Репозиторий и сервисы у провайдеров останутся.`)) return;
     remove.mutate(id, { onSuccess: () => navigate(href.projects) });
   }
 
@@ -280,11 +280,11 @@ export function ProjectPage({ id }: { id: string }) {
             {destroy.isPending ? "Удаляю ресурсы…" : "Удалить проект и ресурсы"}
           </button>
           <button className="button button-quiet" onClick={removeProject} disabled={remove.isPending || destroy.isPending}>
-            Убрать из apphub
+            Убрать из AppHub
           </button>
         </div>
         <p className="muted small">
-          «Удалить» стирает репозиторий, сервисы и базы у провайдеров. «Убрать» — только из apphub, всё у провайдеров
+          «Удалить» стирает репозиторий, сервисы и базы у провайдеров. «Убрать» — только из AppHub, всё у провайдеров
           останется.
         </p>
       </section>
@@ -299,7 +299,7 @@ const NEW_KINDS: { kind: NewResourceKind; label: string; hint: string }[] = [
   { kind: "supabase-db", label: "База Supabase (Postgres)", hint: "Поднимается 1–3 минуты, в фоне" },
   { kind: "d1-db", label: "База Cloudflare D1 (SQLite)", hint: "Создаётся сразу" },
   { kind: "render-service", label: "Сервис Render из репозитория", hint: "Нужен Dockerfile в корне репозитория" },
-  { kind: "telegram-bot", label: "Telegram-бот", hint: "Токен от @BotFather — apphub будет следить, что бот жив" },
+  { kind: "telegram-bot", label: "Telegram-бот", hint: "Токен от @BotFather — AppHub будет следить, что бот жив" },
 ];
 
 /** Добавить ресурс в проект: создать новый или привязать существующий из каталога. */
@@ -512,7 +512,7 @@ function BindFromCatalog({ projectId, bound, onDone }: { projectId: string; boun
           </label>
           {mode === "isolated" && !chosen?.hasSecret && (
             <div className="note">
-              Для изоляции apphub нужна строка подключения этой базы — задайте её в <a href={href.resources}>каталоге</a>.
+              Для изоляции AppHub нужна строка подключения этой базы — задайте её в <a href={href.resources}>каталоге</a>.
             </div>
           )}
         </div>

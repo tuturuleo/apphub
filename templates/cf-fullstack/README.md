@@ -1,6 +1,6 @@
 # %%PROJECT_NAME%%
 
-Создано в apphub по рецепту «Сайт + API + SQLite».
+Создано в AppHub по рецепту «Сайт + API + SQLite».
 
 - `public/` — статический фронтенд
 - `src/index.ts` — API на Cloudflare Workers (`/api/*`)

@@ -1,4 +1,4 @@
-// Инструменты apphub для LLM: одни определения для MCP-сервера и встроенного чата.
+// Инструменты AppHub для LLM: одни определения для MCP-сервера и встроенного чата.
 import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
@@ -30,7 +30,7 @@ import {
 export const INSTRUCTIONS = `apphub создаёт прототипы на бесплатных тарифах (GitHub, Cloudflare, Supabase) по готовым рецептам и следит за ними.
 
 Как разворачивать проект:
-1. list_recipes — выбери рецепт под задачу пользователя. Предпочитай рецепты с recommended: true: если пользователи в России, это рецепты, которые открываются без VPN; рецепт с availableInRussiaWithoutVpn: false предлагай, только объяснив ограничение. Если у рецепта есть missingConnections, попроси пользователя подключить провайдера в интерфейсе apphub (страница «Подключения») — токены через MCP не передаются.
+1. list_recipes — выбери рецепт под задачу пользователя. Предпочитай рецепты с recommended: true: если пользователи в России, это рецепты, которые открываются без VPN; рецепт с availableInRussiaWithoutVpn: false предлагай, только объяснив ограничение. Если у рецепта есть missingConnections, попроси пользователя подключить провайдера в интерфейсе AppHub (страница «Подключения») — токены через MCP не передаются.
 2. Согласуй с пользователем имя проекта (станет именем репозитория и сервисов) и параметры рецепта.
 3. create_project — создаёт ресурсы у провайдеров. Это реальные репозитории и сервисы в аккаунтах пользователя, поэтому вызывай только после его явного согласия. Создание идёт в фоне: инструмент отвечает сразу, а status проекта в get_project меняется с provisioning на ready или failed (1–5 минут, с Supabase дольше).
 4. Первый деплой идёт 1–5 минут (GitHub Actions или Render — см. runs). Проверяй get_project, пока он не завершится; при ошибке открой лог по ссылке из runs и разберись с причиной.
@@ -41,7 +41,7 @@ export const INSTRUCTIONS = `apphub создаёт прототипы на бе�
 3. update_project_files — закоммить код приложения. Не ломай конфиг деплоя (wrangler.jsonc, .github/workflows, Dockerfile, имена баз и биндингов). Схему базы меняй новыми файлами миграций, не правь применённые.
 4. Коммит запускает деплой — дождись его в get_project и проверь, что сайт открывается.
 
-Удалять проекты отсюда нельзя — только в интерфейсе apphub кнопкой «Удалить проект и ресурсы».`;
+Удалять проекты отсюда нельзя — только в интерфейсе AppHub кнопкой «Удалить проект и ресурсы».`;
 
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
@@ -193,7 +193,7 @@ export const TOOLS: AppTool[] = [
     title: "Каталог ресурсов",
     description:
       "Все ресурсы apphub: репозитории, базы, сервисы, таблицы, внешние базы — с аккаунтом, происхождением " +
-      "(created — создан apphub, imported — найден в аккаунте, external — свой сервер) и проектами, к которым привязаны.",
+      "(created — создан AppHub, imported — найден в аккаунте, external — свой сервер) и проектами, к которым привязаны.",
     input: {},
     annotations: { readOnlyHint: true },
     async run(store) {
@@ -213,7 +213,7 @@ export const TOOLS: AppTool[] = [
     name: "list_drive_sheets",
     title: "Таблицы Google Drive",
     description:
-      "Google-таблицы, доступные сервисному аккаунту apphub (ими поделились с его почтой). id подходит для параметра " +
+      "Google-таблицы, доступные сервисному аккаунту AppHub (ими поделились с его почтой). id подходит для параметра " +
       "sheetId рецепта sheet-site с source=drive. Если нужной таблицы нет — попроси пользователя поделиться ею с serviceAccount.",
     input: {},
     annotations: { readOnlyHint: true },
@@ -246,7 +246,7 @@ export const TOOLS: AppTool[] = [
   defineTool({
     name: "list_projects",
     title: "Проекты",
-    description: "Все проекты apphub со статусом создания и ссылками на сайты.",
+    description: "Все проекты AppHub со статусом создания и ссылками на сайты.",
     annotations: { readOnlyHint: true },
     input: {},
     async run(store) {
@@ -366,7 +366,7 @@ export const TOOLS: AppTool[] = [
     title: "Привязать ресурс к проекту",
     description:
       "Привязывает ресурс из каталога (list_resources) к проекту — например, одну базу к нескольким проектам. " +
-      "Для базы в режиме isolated apphub создаёт в ней схему и пользователя проекта; DATABASE_URL в connect_resources " +
+      "Для базы в режиме isolated AppHub создаёт в ней схему и пользователя проекта; DATABASE_URL в connect_resources " +
       "тогда отдаёт строку этого пользователя.",
     input: {
       project: projectRef,
@@ -434,7 +434,7 @@ export const TOOLS: AppTool[] = [
     title: "Логи ресурса",
     description:
       "Последние логи сервиса Render (сборка, запуск, запросы) — чтобы понять, почему деплой упал или сервис не отвечает. " +
-      "Для проекта apphub это прокси без VPN.",
+      "Для проекта AppHub это прокси без VPN.",
     input: {
       project: projectRef,
       resourceId: z.string().describe("id ресурса render.service из get_project"),
@@ -455,14 +455,14 @@ export const TOOLS: AppTool[] = [
     name: "restart_proxy",
     title: "Перезапустить прокси apphub",
     description:
-      "Перезаписывает команду запуска прокси без VPN (сервис Render в проекте apphub) актуальной версией из apphub " +
+      "Перезаписывает команду запуска прокси без VPN (сервис Render в проекте AppHub) актуальной версией из AppHub " +
       "и запускает деплой. Используй, если get_project показывает, что прокси упал; потом смотри get_resource_logs.",
     input: {},
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async run(store) {
       const selfId = await selfProjectId(store);
       const worker = selfId ? (await store.listResources(selfId)).find((r) => r.type === "cloudflare.worker") : null;
-      if (!worker?.url) throw new UserError("Проект apphub не найден — откройте развёрнутый apphub, он добавит себя");
+      if (!worker?.url) throw new UserError("Проект AppHub не найден — откройте развёрнутый AppHub, он добавит себя");
       const proxy = await redeployProxy(store, worker.url);
       return {
         restarted: true,

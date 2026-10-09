@@ -1,5 +1,5 @@
-// Доступ к apphub без VPN: прокси на Render (Caddy из готового образа) пересылает запросы на адрес Worker.
-// Прокси подписывает запросы общим секретом — только тогда apphub верит переданному им адресу (для passkey и cookie).
+// Доступ к AppHub без VPN: прокси на Render (Caddy из готового образа) пересылает запросы на адрес Worker.
+// Прокси подписывает запросы общим секретом — только тогда AppHub верит переданному им адресу (для passkey и cookie).
 import { decrypt, encrypt } from "./crypto";
 import type { Store } from "./db";
 import { Clients } from "./engine";
@@ -117,7 +117,7 @@ export async function createProxy(
   if (await load(store)) throw new UserError("Прокси уже создан — сначала удалите его", 409);
   const host = new URL(upstream).hostname;
   if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost")) {
-    throw new UserError("Прокси создаётся из развёрнутого apphub — локальный адрес недоступен из Render");
+    throw new UserError("Прокси создаётся из развёрнутого AppHub — локальный адрес недоступен из Render");
   }
   const region = (input.region ?? "frankfurt") as RenderRegion;
   if (!REGIONS.includes(region)) throw new UserError("Некорректный регион");
@@ -150,7 +150,7 @@ export async function createProxy(
   return (await getProxy(store))!;
 }
 
-/** Переписывает команду запуска (например, после исправления в apphub) и перезапускает прокси. */
+/** Переписывает команду запуска (например, после исправления в AppHub) и перезапускает прокси. */
 export async function redeployProxy(store: Store, upstream: string): Promise<ProxyInfo> {
   const stored = await load(store);
   if (!stored) throw new UserError("Прокси ещё не создан", 404);
@@ -173,7 +173,7 @@ export async function deleteProxy(store: Store): Promise<void> {
   const render = await new Clients(store).render(stored.connectionId);
   if (render) {
     await render.client.deleteService(stored.serviceId).catch((e: unknown) => {
-      // уже удалён вручную в Render — не мешаем убрать прокси из apphub
+      // уже удалён вручную в Render — не мешаем убрать прокси из AppHub
       if (!(e instanceof Error && / 404 /.test(e.message))) throw e;
     });
   }

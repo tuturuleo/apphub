@@ -124,7 +124,7 @@ export function ChatPage() {
 
       {!connected ? (
         <div className="note">
-          Ассистенту нужен ключ Claude API. <a href={href.connections}>Подключить</a>. Без ключа apphub доступен из
+          Ассистенту нужен ключ Claude API. <a href={href.connections}>Подключить</a>. Без ключа AppHub доступен из
           Claude Code через MCP.
         </div>
       ) : (

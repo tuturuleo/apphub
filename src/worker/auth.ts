@@ -60,7 +60,7 @@ type Ctx = Context<{ Bindings: AppEnv; Variables: any }, any>;
 /**
  * Адрес, на котором пользователь открыл apphub. За прокси (доступ без VPN через Render) настоящий адрес приходит
  * в X-Apphub-Host (или X-Forwarded-Host) — доверяем ему, только если прокси подтвердил себя секретом:
- * созданным apphub (страница «Безопасность») или заданным вручную PROXY_SECRET.
+ * созданным AppHub (страница «Безопасность») или заданным вручную PROXY_SECRET.
  */
 export async function publicOrigin(c: Ctx): Promise<{ origin: string; rpID: string }> {
   const url = new URL(c.req.url);
@@ -101,7 +101,7 @@ async function tokenValid(env: AppEnv, token: string): Promise<boolean> {
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-/** Дополнительный способ: Cloudflare Access перед apphub (если настроен). */
+/** Дополнительный способ: Cloudflare Access перед AppHub (если настроен). */
 async function accessValid(c: Ctx): Promise<boolean> {
   const { ACCESS_TEAM_DOMAIN: team, ACCESS_AUD: aud } = c.env;
   const token = c.req.header("Cf-Access-Jwt-Assertion");
@@ -121,7 +121,7 @@ async function accessValid(c: Ctx): Promise<boolean> {
 
 /**
  * Вход отключён только для локальной разработки: переменная работает лишь на localhost, поэтому случайно
- * выставленная в облаке она apphub не откроет.
+ * выставленная в облаке она AppHub не откроет.
  */
 function devNoAuth(c: Ctx): boolean {
   if (c.env.DEV_ALLOW_NO_AUTH !== "true") return false;
@@ -259,10 +259,10 @@ export async function registrationOptions(c: Ctx, setupCode: string | undefined)
     .bind(rpID)
     .all<{ id: string; transports: string | null }>();
   const options = await generateRegistrationOptions({
-    rpName: "apphub",
+    rpName: "AppHub",
     rpID,
     userName: "owner",
-    userDisplayName: "Владелец apphub",
+    userDisplayName: "Владелец AppHub",
     userID: OWNER_ID,
     attestationType: "none",
     authenticatorSelection: { residentKey: "required", userVerification: "preferred" },

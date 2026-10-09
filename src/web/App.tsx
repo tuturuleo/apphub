@@ -27,7 +27,7 @@ function Shell() {
           <span className="brand-mark" aria-hidden>
             ▲
           </span>
-          apphub
+          AppHub
         </a>
         <nav>
           <a

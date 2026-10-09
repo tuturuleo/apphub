@@ -188,7 +188,7 @@ api.post("/connections/:id/import", async (c) => {
 
 api.post("/resources/external", async (c) => c.json(await addExternalPostgres(c.var.store, await c.req.json()), 201));
 
-// Строка подключения к базе, которую apphub не знает (например, Supabase, созданный до сохранения строк)
+// Строка подключения к базе, которую AppHub не знает (например, Supabase, созданный до сохранения строк)
 api.put("/resources/:id/secret", async (c) => {
   const store = c.var.store;
   const resource = await store.getResource(c.req.param("id"));
@@ -252,7 +252,7 @@ api.get("/recipes", (c) => c.json(RECIPES.map(recipeInfo)));
 // --- проекты ---
 
 api.get("/projects", async (c) => {
-  // Развёрнутый apphub показывает себя среди проектов (адрес — самого Worker, не прокси)
+  // Развёрнутый AppHub показывает себя среди проектов (адрес — самого Worker, не прокси)
   await ensureSelfProject(c.var.store, new URL(c.req.url).origin).catch((e) => console.warn("apphub в проектах:", e));
   return c.json(await listProjectSummaries(c.var.store));
 });
@@ -335,7 +335,7 @@ api.get("/monitor", async (c) => {
 // Ручная проверка: локально cron не срабатывает, а иногда хочется проверить сразу
 api.post("/monitor/run", async (c) => c.json(await runMonitor(c.var.store)));
 
-// Удаляет проект целиком: ресурсы у провайдеров и запись в apphub
+// Удаляет проект целиком: ресурсы у провайдеров и запись в AppHub
 api.post("/projects/:id/destroy", async (c) => c.json(await destroyProject(c.var.store, c.req.param("id"))));
 
 // Удаляет проект только из apphub: репозиторий, Worker и база у провайдеров остаются.
