@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
 import { Clients, projectStatus } from "./engine";
+import { redeployProxy } from "./proxy";
+import { selfProjectId } from "./self";
 import { collectLimits, formatAmount } from "./limits";
 import { notify, reconcileAlerts, runMonitor } from "./monitor";
 import { startResourceTask } from "./builders";
@@ -447,6 +449,27 @@ export const TOOLS: AppTool[] = [
       const render = await new Clients(store).render(r.connectionId);
       if (!render) throw new UserError("Аккаунт Render этого сервиса не подключён");
       return { logs: (await render.client.logs(render.ownerId, r.externalId, limit ?? 50)).reverse() };
+    },
+  }),
+  defineTool({
+    name: "restart_proxy",
+    title: "Перезапустить прокси apphub",
+    description:
+      "Перезаписывает команду запуска прокси без VPN (сервис Render в проекте apphub) актуальной версией из apphub " +
+      "и запускает деплой. Используй, если get_project показывает, что прокси упал; потом смотри get_resource_logs.",
+    input: {},
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    async run(store) {
+      const selfId = await selfProjectId(store);
+      const worker = selfId ? (await store.listResources(selfId)).find((r) => r.type === "cloudflare.worker") : null;
+      if (!worker?.url) throw new UserError("Проект apphub не найден — откройте развёрнутый apphub, он добавит себя");
+      const proxy = await redeployProxy(store, worker.url);
+      return {
+        restarted: true,
+        url: proxy.url,
+        state: proxy.state,
+        next: "Деплой 1–3 минуты; проверяй get_project apphub.",
+      };
     },
   }),
   defineTool({

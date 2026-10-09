@@ -52,21 +52,28 @@ function randomSecret(): string {
 }
 
 /**
- * Команда Caddy: слушает порт Render, шлёт всё на Worker с его Host, добавляет секрет и исходный адрес.
+ * Скрипт Caddy: слушает порт Render, шлёт всё на Worker с его Host, добавляет секрет и исходный адрес.
  * В образе у бинарника есть file capability (порты < 1024), а Render запрещает такие права — exec падает с
  * «operation not permitted». Копия без capability запускается; порт 10000 прав не требует.
  */
-export function caddyCommand(upstream: string, secret: string): string {
-  const caddy = [
-    "/tmp/caddy reverse-proxy",
+export function caddyScript(upstream: string, secret: string): string {
+  return [
+    "cp /usr/bin/caddy /tmp/caddy && exec /tmp/caddy reverse-proxy",
     "--from :10000",
     `--to ${upstream}`,
     "--change-host-header",
     `--header-up X-Apphub-Proxy:${secret}`,
     "--header-up X-Apphub-Host:{host}",
   ].join(" ");
-  return `sh -c 'cp /usr/bin/caddy /tmp/caddy && exec ${caddy}'`;
 }
+
+export const PROXY_ENV = "APPHUB_PROXY_CMD";
+
+/**
+ * Команда запуска — одно слово без пробелов: Render оставляет кавычки в аргументах как есть, поэтому скрипт
+ * лежит в переменной окружения, а sh разворачивает его сам (${IFS} — пробел внутри одного аргумента).
+ */
+export const PROXY_COMMAND = `sh -c eval\${IFS}"$${PROXY_ENV}"`;
 
 export async function getProxy(store: Store): Promise<ProxyInfo | null> {
   const stored = await load(store);
@@ -125,7 +132,8 @@ export async function createProxy(
     ownerId: render.ownerId,
     name: `apphub-proxy-${suffix}`,
     imagePath: CADDY_IMAGE,
-    dockerCommand: caddyCommand(upstream, secret),
+    dockerCommand: PROXY_COMMAND,
+    env: { [PROXY_ENV]: caddyScript(upstream, secret) },
     region,
   });
   const stored: StoredProxy = {
@@ -148,7 +156,8 @@ export async function redeployProxy(store: Store, upstream: string): Promise<Pro
   const render = await new Clients(store).render(stored.connectionId);
   if (!render) throw new UserError("Аккаунт Render прокси не подключён");
   const secret = await decrypt(stored.secret, store.env.ENCRYPTION_KEY);
-  await render.client.updateDockerCommand(stored.serviceId, caddyCommand(upstream, secret));
+  await render.client.setEnvVar(stored.serviceId, PROXY_ENV, caddyScript(upstream, secret));
+  await render.client.updateDockerCommand(stored.serviceId, PROXY_COMMAND);
   await render.client.triggerDeploy(stored.serviceId);
   return (await getProxy(store))!;
 }

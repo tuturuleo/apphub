@@ -105,12 +105,14 @@ export class Render {
     imagePath: string;
     dockerCommand: string;
     region: RenderRegion;
+    env?: Record<string, string>;
   }): Promise<RenderService> {
     const created = await this.request<{ service: RenderService }>("POST", "/services", {
       type: "web_service",
       name: opts.name,
       ownerId: opts.ownerId,
       image: { ownerId: opts.ownerId, imagePath: opts.imagePath },
+      envVars: Object.entries(opts.env ?? {}).map(([key, value]) => ({ key, value })),
       serviceDetails: {
         runtime: "image",
         plan: "free",
