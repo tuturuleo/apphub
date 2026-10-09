@@ -176,6 +176,7 @@ function ProxySection() {
     onSuccess: refresh,
   });
   const remove = useMutation({ mutationFn: api.deleteProxy, onSuccess: refresh });
+  const redeploy = useMutation({ mutationFn: api.redeployProxy, onSuccess: refresh });
   const p = proxy.data;
   const viaProxy = !!p?.url && location.origin === p.url;
 
@@ -188,7 +189,7 @@ function ProxySection() {
         На новом адресе нужен свой passkey: войдите там с кодом установки. Бесплатный сервис засыпает без запросов —
         первый вход после паузы около минуты.
       </p>
-      <ErrorNote message={errorMessage(proxy.error ?? create.error ?? remove.error)} />
+      <ErrorNote message={errorMessage(proxy.error ?? create.error ?? remove.error ?? redeploy.error)} />
       {proxy.isPending ? (
         <Loading />
       ) : p ? (
@@ -207,6 +208,16 @@ function ProxySection() {
             <div className="links">
               <ExternalLink url={p.dashboardUrl}>Render</ExternalLink>
             </div>
+            {p.state !== "live" && (
+              <button
+                className="button button-quiet"
+                disabled={redeploy.isPending}
+                onClick={() => redeploy.mutate()}
+                title="Записать актуальную настройку прокси и перезапустить его"
+              >
+                {redeploy.isPending ? "Перезапускаю…" : "Обновить и перезапустить"}
+              </button>
+            )}
             <button
               className="button button-quiet"
               disabled={remove.isPending || viaProxy}

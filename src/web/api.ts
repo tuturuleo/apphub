@@ -81,6 +81,7 @@ export const api = {
   createToken: (name: string) => request<{ id: string; token: string }>("POST", "/security/tokens", { name }),
   proxy: () => request<ProxyInfo | null>("GET", "/proxy"),
   createProxy: (connectionId: string, region: string) => request<ProxyInfo>("POST", "/proxy", { connectionId, region }),
+  redeployProxy: () => request<ProxyInfo>("POST", "/proxy/redeploy", {}),
   deleteProxy: () => request<void>("DELETE", "/proxy"),
   deleteToken: (id: string) => request<void>("DELETE", `/security/tokens/${id}`),
   providers: () => request<ProviderInfo[]>("GET", "/providers"),

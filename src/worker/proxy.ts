@@ -51,16 +51,21 @@ function randomSecret(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(40)), (b) => alphabet[b % alphabet.length]).join("");
 }
 
-/** Команда Caddy: слушает порт Render, шлёт всё на Worker с его Host, добавляет секрет и исходный адрес. */
+/**
+ * Команда Caddy: слушает порт Render, шлёт всё на Worker с его Host, добавляет секрет и исходный адрес.
+ * В образе у бинарника есть file capability (порты < 1024), а Render запрещает такие права — exec падает с
+ * «operation not permitted». Копия без capability запускается; порт 10000 прав не требует.
+ */
 export function caddyCommand(upstream: string, secret: string): string {
-  return [
-    "caddy reverse-proxy",
+  const caddy = [
+    "/tmp/caddy reverse-proxy",
     "--from :10000",
     `--to ${upstream}`,
     "--change-host-header",
     `--header-up X-Apphub-Proxy:${secret}`,
     "--header-up X-Apphub-Host:{host}",
   ].join(" ");
+  return `sh -c 'cp /usr/bin/caddy /tmp/caddy && exec ${caddy}'`;
 }
 
 export async function getProxy(store: Store): Promise<ProxyInfo | null> {
@@ -133,6 +138,18 @@ export async function createProxy(
   };
   await store.setMeta(META_KEY, JSON.stringify(stored));
   cached = null;
+  return (await getProxy(store))!;
+}
+
+/** Переписывает команду запуска (например, после исправления в apphub) и перезапускает прокси. */
+export async function redeployProxy(store: Store, upstream: string): Promise<ProxyInfo> {
+  const stored = await load(store);
+  if (!stored) throw new UserError("Прокси ещё не создан", 404);
+  const render = await new Clients(store).render(stored.connectionId);
+  if (!render) throw new UserError("Аккаунт Render прокси не подключён");
+  const secret = await decrypt(stored.secret, store.env.ENCRYPTION_KEY);
+  await render.client.updateDockerCommand(stored.serviceId, caddyCommand(upstream, secret));
+  await render.client.triggerDeploy(stored.serviceId);
   return (await getProxy(store))!;
 }
 

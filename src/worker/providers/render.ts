@@ -121,6 +121,12 @@ export class Render {
     return created.service;
   }
 
+  async updateDockerCommand(serviceId: string, dockerCommand: string): Promise<void> {
+    await this.request("PATCH", `/services/${serviceId}`, {
+      serviceDetails: { envSpecificDetails: { dockerCommand } },
+    });
+  }
+
   /** Последние логи сервиса (сборка и работа), от новых к старым. */
   async logs(
     ownerId: string,

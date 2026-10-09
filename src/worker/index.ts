@@ -1,7 +1,7 @@
 import { Hono, type ErrorHandler } from "hono";
 import * as auth from "./auth";
 import { AuthError, requireAuth } from "./auth";
-import { createProxy, deleteProxy, getProxy } from "./proxy";
+import { createProxy, deleteProxy, getProxy, redeployProxy } from "./proxy";
 import { assertNotSelf, ensureSelfProject, syncProxy } from "./self";
 import { Store } from "./db";
 import { projectStatus, resourcesHealth } from "./engine";
@@ -101,6 +101,7 @@ api.post("/proxy", async (c) => {
   await syncProxy(c.var.store);
   return c.json(proxy, 201);
 });
+api.post("/proxy/redeploy", async (c) => c.json(await redeployProxy(c.var.store, new URL(c.req.url).origin)));
 api.delete("/proxy", async (c) => {
   await deleteProxy(c.var.store);
   await syncProxy(c.var.store);

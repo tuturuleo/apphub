@@ -9,7 +9,8 @@ describe("прокси на Render", () => {
     expect(cmd).toContain("--change-host-header");
     expect(cmd).toContain("--header-up X-Apphub-Proxy:s3cret");
     expect(cmd).toContain("--header-up X-Apphub-Host:{host}");
-    // аргументы без пробелов внутри — Render разбивает команду по пробелам
-    expect(cmd.split(" ").filter((a) => a.startsWith("X-Apphub")).length).toBe(2);
+    // бинарник из образа с file capability Render не запускает — работает копия
+    expect(cmd).toMatch(/^sh -c 'cp \/usr\/bin\/caddy \/tmp\/caddy && exec \/tmp\/caddy reverse-proxy /);
+    expect(cmd.endsWith("'")).toBe(true);
   });
 });
