@@ -95,6 +95,29 @@ export class Render {
     return created.service;
   }
 
+  /** Сервис из готового образа (без репозитория) — например, прокси на Caddy. */
+  async createImageService(opts: {
+    ownerId: string;
+    name: string;
+    imagePath: string;
+    dockerCommand: string;
+    region: RenderRegion;
+  }): Promise<RenderService> {
+    const created = await this.request<{ service: RenderService }>("POST", "/services", {
+      type: "web_service",
+      name: opts.name,
+      ownerId: opts.ownerId,
+      image: { ownerId: opts.ownerId, imagePath: opts.imagePath },
+      serviceDetails: {
+        runtime: "image",
+        plan: "free",
+        region: opts.region,
+        envSpecificDetails: { dockerCommand: opts.dockerCommand },
+      },
+    });
+    return created.service;
+  }
+
   /** Добавляет или обновляет одну переменную окружения, остальные не трогает. Деплой не запускает. */
   async setEnvVar(serviceId: string, key: string, value: string): Promise<void> {
     await this.request("PUT", `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, { value });

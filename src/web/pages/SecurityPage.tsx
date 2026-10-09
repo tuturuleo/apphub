@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api";
 import { authKey, registerPasskey, useAuthState } from "../auth";
-import { ErrorNote, Loading } from "../components";
-import { errorMessage } from "../queries";
+import { ErrorNote, ExternalLink, Loading, StatusDot } from "../components";
+import { errorMessage, useConnections } from "../queries";
+import { href } from "../router";
 
 const securityKey = ["security"] as const;
 
@@ -150,6 +151,111 @@ export function SecurityPage() {
         )}
         <ErrorNote message={errorMessage(createToken.error ?? removeToken.error)} />
       </section>
+      <ProxySection />
     </>
+  );
+}
+
+const PROXY_DOT = { live: "ok", deploying: "pending", failed: "error", unknown: "unknown" } as const;
+
+/** Прокси на Render: apphub открывается по адресу onrender.com, если workers.dev недоступен без VPN. */
+function ProxySection() {
+  const qc = useQueryClient();
+  const connections = useConnections();
+  const renders = connections.data?.filter((c) => c.provider === "render") ?? [];
+  const proxy = useQuery({
+    queryKey: ["proxy"],
+    queryFn: api.proxy,
+    refetchInterval: (q) => (q.state.data?.state === "deploying" ? 10_000 : false),
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["proxy"] });
+  const [account, setAccount] = useState("");
+  const [region, setRegion] = useState("frankfurt");
+  const create = useMutation({
+    mutationFn: () => api.createProxy(account || renders[0]?.id, region),
+    onSuccess: refresh,
+  });
+  const remove = useMutation({ mutationFn: api.deleteProxy, onSuccess: refresh });
+  const p = proxy.data;
+  const viaProxy = !!p?.url && location.origin === p.url;
+
+  return (
+    <section>
+      <h2 className="section-title">Доступ без VPN</h2>
+      <p className="muted">
+        Если адрес apphub (workers.dev) открывается только через VPN, apphub создаст в вашем аккаунте Render прокси:
+        бесплатный сервис, который пересылает запросы сюда. Токены через него не хранятся — он только передаёт трафик.
+        На новом адресе нужен свой passkey: войдите там с кодом установки. Бесплатный сервис засыпает без запросов —
+        первый вход после паузы около минуты.
+      </p>
+      <ErrorNote message={errorMessage(proxy.error ?? create.error ?? remove.error)} />
+      {proxy.isPending ? (
+        <Loading />
+      ) : p ? (
+        <ul className="resource-list">
+          <li className="resource">
+            <StatusDot state={PROXY_DOT[p.state]} />
+            <div className="resource-main">
+              <div className="resource-title">
+                <strong>
+                  {p.url ? <ExternalLink url={p.url}>{p.url.replace("https://", "")}</ExternalLink> : "Прокси"}
+                </strong>
+                {viaProxy && <span className="kind">вы здесь</span>}
+              </div>
+              <div className="muted small">{p.summary}</div>
+            </div>
+            <div className="links">
+              <ExternalLink url={p.dashboardUrl}>Render</ExternalLink>
+            </div>
+            <button
+              className="button button-quiet"
+              disabled={remove.isPending || viaProxy}
+              title={viaProxy ? "Удалять прокси, открыв apphub через него, нельзя" : undefined}
+              onClick={() => confirm("Удалить прокси в Render? Адрес перестанет работать.") && remove.mutate()}
+            >
+              Удалить
+            </button>
+          </li>
+        </ul>
+      ) : renders.length === 0 ? (
+        <p className="muted">
+          Нужен аккаунт Render — <a href={href.connections}>подключите его</a>.
+        </p>
+      ) : (
+        <form
+          className="token-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+        >
+          {renders.length > 1 && (
+            <label className="field">
+              <span>Аккаунт Render</span>
+              <select value={account || renders[0].id} onChange={(e) => setAccount(e.target.value)}>
+                {renders.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="field">
+            <span>Регион</span>
+            <select value={region} onChange={(e) => setRegion(e.target.value)}>
+              <option value="frankfurt">Франкфурт</option>
+              <option value="virginia">Вирджиния</option>
+              <option value="oregon">Орегон</option>
+              <option value="ohio">Огайо</option>
+              <option value="singapore">Сингапур</option>
+            </select>
+          </label>
+          <button className="button" type="submit" disabled={create.isPending}>
+            {create.isPending ? "Создаю…" : "Создать прокси"}
+          </button>
+        </form>
+      )}
+    </section>
   );
 }

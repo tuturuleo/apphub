@@ -10,6 +10,7 @@ import type { AppEnv } from "../src/worker/env";
 function fakeD1(): D1Database {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync("migrations/0007_auth.sql", "utf8"));
+  db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   const statement = (sql: string, args: unknown[] = []) => ({
     bind: (...next: unknown[]) => statement(sql, next),
     first: async () => (db.prepare(sql).get(...(args as never[])) as unknown) ?? null,
@@ -112,6 +113,19 @@ describe("авторизация", () => {
       .bind(await auth.sha256("old"), 0, Date.now() - 1)
       .run();
     expect((await call("/projects", { headers: { cookie: "apphub_session=old" } })).status).toBe(401);
+  });
+
+  it("секрет прокси, созданного apphub, берётся из базы", async () => {
+    const { encrypt } = await import("../src/worker/crypto");
+    env.ENCRYPTION_KEY = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+    const secret = await encrypt("stored-secret", env.ENCRYPTION_KEY);
+    await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('proxy', ?)").bind(JSON.stringify({ secret })).run();
+    const res = await call("/auth/register/options", {
+      method: "POST",
+      headers: { "X-Apphub-Host": "hub-proxy.onrender.com", "X-Apphub-Proxy": "stored-secret" },
+      body: JSON.stringify({ setupCode: "correct-horse" }),
+    });
+    expect(((await res.json()) as { options: { rp: { id: string } } }).options.rp.id).toBe("hub-proxy.onrender.com");
   });
 
   it("адрес за прокси принимается только с секретом прокси", async () => {

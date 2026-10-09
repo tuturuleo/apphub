@@ -13,7 +13,9 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { fromBase64, toBase64 } from "./crypto";
+import { Store } from "./db";
 import type { AppEnv } from "./env";
+import { proxySecret } from "./proxy";
 
 const SESSION_COOKIE = "apphub_session";
 const SESSION_DAYS = 30;
@@ -57,14 +59,16 @@ type Ctx = Context<{ Bindings: AppEnv; Variables: any }, any>;
 
 /**
  * Адрес, на котором пользователь открыл apphub. За прокси (доступ без VPN через Render) настоящий адрес приходит
- * в X-Forwarded-Host — доверяем ему, только если прокси подтвердил себя секретом PROXY_SECRET.
+ * в X-Apphub-Host (или X-Forwarded-Host) — доверяем ему, только если прокси подтвердил себя секретом:
+ * созданным apphub (страница «Безопасность») или заданным вручную PROXY_SECRET.
  */
-export function publicOrigin(c: Ctx): { origin: string; rpID: string } {
+export async function publicOrigin(c: Ctx): Promise<{ origin: string; rpID: string }> {
   const url = new URL(c.req.url);
-  const secret = c.env.PROXY_SECRET;
-  const forwarded = c.req.header("X-Forwarded-Host");
-  if (secret && forwarded && safeEqual(c.req.header("X-Apphub-Proxy") ?? "", secret)) {
-    return { origin: `https://${forwarded}`, rpID: forwarded.split(":")[0] };
+  const given = c.req.header("X-Apphub-Proxy");
+  const host = c.req.header("X-Apphub-Host") ?? c.req.header("X-Forwarded-Host");
+  if (given && host && /^[a-z0-9.-]+(:\d+)?$/i.test(host)) {
+    const secrets = [c.env.PROXY_SECRET, await proxySecret(new Store(c.env))].filter(Boolean) as string[];
+    if (secrets.some((s) => safeEqual(given, s))) return { origin: `https://${host}`, rpID: host.split(":")[0] };
   }
   return { origin: url.origin, rpID: url.hostname };
 }
@@ -152,7 +156,7 @@ export const requireAuth = createMiddleware<{ Bindings: AppEnv; Variables: any }
     !c.req.header("Authorization") && c.env.DEV_ALLOW_NO_AUTH !== "true" && !!getCookie(c, SESSION_COOKIE);
   if (viaCookie && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("Origin");
-    if (!origin || origin !== publicOrigin(c).origin) {
+    if (!origin || origin !== (await publicOrigin(c)).origin) {
       return c.json({ error: "Запрос с чужого сайта отклонён" }, 403);
     }
   }
@@ -169,7 +173,7 @@ async function startSession(c: Ctx): Promise<void> {
   )
     .bind(await sha256(token), now, now + SESSION_DAYS * 86_400_000, c.req.header("User-Agent")?.slice(0, 200) ?? null)
     .run();
-  const { origin } = publicOrigin(c);
+  const { origin } = await publicOrigin(c);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: origin.startsWith("https://"),
@@ -237,7 +241,7 @@ export async function registrationOptions(c: Ctx, setupCode: string | undefined)
     if (!setupCode || !safeEqual(setupCode.trim(), c.env.SETUP_CODE))
       throw new AuthError("Неверный код установки", 403);
   }
-  const { rpID } = publicOrigin(c);
+  const { rpID } = await publicOrigin(c);
   const existing = await c.env.DB.prepare("SELECT id, transports FROM auth_passkeys WHERE rp_id = ?")
     .bind(rpID)
     .all<{ id: string; transports: string | null }>();
@@ -264,7 +268,7 @@ export async function registrationVerify(
   name: string,
 ) {
   const expectedChallenge = await takeChallenge(c.env, challengeId, "register");
-  const { origin, rpID } = publicOrigin(c);
+  const { origin, rpID } = await publicOrigin(c);
   const result = await rejectAs(
     400,
     "Passkey не подтверждён",
@@ -295,7 +299,7 @@ export async function registrationVerify(
 }
 
 export async function authenticationOptions(c: Ctx) {
-  const { rpID } = publicOrigin(c);
+  const { rpID } = await publicOrigin(c);
   // Пустой allowCredentials: браузер сам предложит подходящий passkey (discoverable credentials)
   const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
   return { challengeId: await saveChallenge(c.env, options.challenge, "login"), options };
@@ -307,7 +311,7 @@ export async function authenticationVerify(c: Ctx, challengeId: string, response
     .bind(response.id)
     .first<{ id: string; public_key: string; counter: number; transports: string | null; rp_id: string }>();
   if (!passkey) throw new AuthError("Этот passkey не зарегистрирован в apphub", 401);
-  const { origin, rpID } = publicOrigin(c);
+  const { origin, rpID } = await publicOrigin(c);
   const result = await rejectAs(
     401,
     "Вход не подтверждён",

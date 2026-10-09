@@ -55,6 +55,16 @@ export interface SecurityInfo {
   tokens: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[];
 }
 
+export interface ProxyInfo {
+  connectionId: string;
+  serviceId: string;
+  url: string | null;
+  dashboardUrl: string;
+  createdAt: number;
+  state: "live" | "deploying" | "failed" | "unknown";
+  summary: string;
+}
+
 type Options = { challengeId: string; options: never };
 
 export const api = {
@@ -69,6 +79,9 @@ export const api = {
   security: () => request<SecurityInfo>("GET", "/security"),
   deletePasskey: (id: string) => request<void>("DELETE", `/security/passkeys/${encodeURIComponent(id)}`),
   createToken: (name: string) => request<{ id: string; token: string }>("POST", "/security/tokens", { name }),
+  proxy: () => request<ProxyInfo | null>("GET", "/proxy"),
+  createProxy: (connectionId: string, region: string) => request<ProxyInfo>("POST", "/proxy", { connectionId, region }),
+  deleteProxy: () => request<void>("DELETE", "/proxy"),
   deleteToken: (id: string) => request<void>("DELETE", `/security/tokens/${id}`),
   providers: () => request<ProviderInfo[]>("GET", "/providers"),
   connections: () => request<Connection[]>("GET", "/connections"),

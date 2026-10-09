@@ -521,6 +521,10 @@ export class Store {
     return row?.value ?? null;
   }
 
+  async deleteMeta(key: string): Promise<void> {
+    await this.db.prepare("DELETE FROM meta WHERE key = ?").bind(key).run();
+  }
+
   async setMeta(key: string, value: string): Promise<void> {
     await this.db
       .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")

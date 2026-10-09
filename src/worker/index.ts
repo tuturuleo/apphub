@@ -1,6 +1,7 @@
 import { Hono, type ErrorHandler } from "hono";
 import * as auth from "./auth";
 import { AuthError, requireAuth } from "./auth";
+import { createProxy, deleteProxy, getProxy } from "./proxy";
 import { Store } from "./db";
 import { projectStatus, resourcesHealth } from "./engine";
 import type { AppEnv } from "./env";
@@ -90,6 +91,16 @@ api.delete("/security/passkeys/:id", async (c) => {
 api.post("/security/tokens", async (c) => {
   const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string });
   return c.json(await auth.createToken(c.env, body.name ?? ""), 201);
+});
+// Доступ без VPN: прокси на Render. Цель — собственный адрес Worker, а не адрес, через который открыт интерфейс
+api.get("/proxy", async (c) => c.json(await getProxy(c.var.store)));
+api.post("/proxy", async (c) => {
+  const body = await c.req.json<{ connectionId?: string; region?: string }>();
+  return c.json(await createProxy(c.var.store, new URL(c.req.url).origin, body), 201);
+});
+api.delete("/proxy", async (c) => {
+  await deleteProxy(c.var.store);
+  return c.body(null, 204);
 });
 api.delete("/security/tokens/:id", async (c) => {
   await auth.deleteToken(c.env, c.req.param("id"));
