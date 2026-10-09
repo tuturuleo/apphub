@@ -2,6 +2,7 @@
 import type { DestroyResult, Project, ProjectSummary, Resource } from "../shared/types";
 import type { Store } from "./db";
 import { deleteResource, deletionOrder, missingConnections, runResourceAction, triggerDeploy } from "./engine";
+import { blockingLimits, describeLimit } from "./limits";
 import { GitHub, type RepoFile } from "./providers/github";
 import { findRecipe } from "./recipes";
 
@@ -52,6 +53,15 @@ export async function createProject(store: Store, input: NewProjectInput): Promi
 
   const missing = await missingConnections(store, recipe);
   if (missing.length > 0) throw new UserError(`Сначала подключите: ${missing.join(", ")}`);
+
+  // Упрёмся в лимит бесплатного тарифа — лучше сказать сейчас, чем упасть посреди создания
+  const blocked = await blockingLimits(store, recipe.needs);
+  if (blocked.length > 0) {
+    throw new UserError(
+      `Не хватает бесплатного лимита — ${blocked.map(describeLimit).join("; ")}. ${blocked[0].note ?? ""}`.trim(),
+      409,
+    );
+  }
 
   return store.createProject({ name, recipeId: recipe.id, params });
 }

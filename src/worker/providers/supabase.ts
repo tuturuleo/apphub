@@ -111,6 +111,14 @@ export class Supabase {
     await this.request("PATCH", `/projects/${ref}/config/auth`, config);
   }
 
+  async listOrgProjects(slug: string): Promise<{ ref: string; name: string; status: SupabaseProjectStatus }[]> {
+    const data = await this.request<{ projects: { ref: string; name: string; status: SupabaseProjectStatus }[] }>(
+      "GET",
+      `/organizations/${slug}/projects?limit=100`,
+    );
+    return data.projects;
+  }
+
   async deleteProject(ref: string): Promise<void> {
     await this.request("DELETE", `/projects/${ref}`);
   }

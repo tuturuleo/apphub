@@ -5,7 +5,8 @@ export type Route =
   | { page: "new"; recipeId?: string }
   | { page: "project"; id: string }
   | { page: "connections" }
-  | { page: "chat" };
+  | { page: "chat" }
+  | { page: "limits" };
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
@@ -13,6 +14,7 @@ function parse(hash: string): Route {
   if (parts[0] === "projects" && parts[1]) return { page: "project", id: parts[1] };
   if (parts[0] === "connections") return { page: "connections" };
   if (parts[0] === "chat") return { page: "chat" };
+  if (parts[0] === "limits") return { page: "limits" };
   return { page: "projects" };
 }
 
@@ -35,6 +37,7 @@ export const href = {
   project: (id: string) => `#/projects/${id}`,
   connections: "#/connections",
   chat: "#/chat",
+  limits: "#/limits",
 };
 
 export function navigate(to: string) {

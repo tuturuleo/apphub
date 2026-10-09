@@ -22,6 +22,7 @@ export const keys = {
   project: (id: string) => ["projects", id] as const,
   projectStatus: (id: string) => ["projects", id, "status"] as const,
   monitor: ["monitor"] as const,
+  limits: ["limits"] as const,
 };
 
 // Частота опроса: пока что-то создаётся или деплоится — часто, в покое — редко.
@@ -159,6 +160,12 @@ export function useDeleteProject() {
     },
   });
 }
+
+// --- лимиты ---
+
+/** Лимиты — запросы к API нескольких провайдеров, поэтому редко: раз в 5 минут и при возврате на вкладку. */
+export const useLimits = () =>
+  useQuery({ queryKey: keys.limits, queryFn: api.limits, staleTime: 60_000, refetchInterval: 5 * 60_000 });
 
 // --- мониторинг ---
 

@@ -46,6 +46,7 @@ export const dockerPostgres: Recipe = {
     "Сервер в Docker на Render — шаблон на Python и FastAPI, заменяется на любой язык — и база Postgres в Supabase.",
   stack: ["Render", "Docker", "Python", "Supabase", "Postgres"],
   requires: ["github", "render", "supabase"],
+  needs: ["supabase.projects", "render.hours"],
   fields: [
     {
       key: "region",

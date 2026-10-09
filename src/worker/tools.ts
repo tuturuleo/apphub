@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Project } from "../shared/types";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
+import { collectLimits, formatAmount } from "./limits";
 import { notify, reconcileAlerts, runMonitor } from "./monitor";
 import { PROVIDERS } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
@@ -128,6 +129,7 @@ export const TOOLS: AppTool[] = [
           summary: info.summary,
           stack: info.stack,
           missingConnections: info.requires.filter((p) => !connected.has(p)),
+          usesLimits: info.needs,
           params: info.fields.map((f) => ({
             key: f.key,
             label: f.label,
@@ -153,6 +155,28 @@ export const TOOLS: AppTool[] = [
         const c = connections.find((x) => x.provider === p.id);
         return { provider: p.id, name: p.name, connected: !!c, account: c?.label ?? null };
       });
+    },
+  }),
+  defineTool({
+    name: "get_limits",
+    title: "Лимиты бесплатных тарифов",
+    description:
+      "Занято / доступно по лимитам бесплатных тарифов подключённых провайдеров (проекты Supabase, базы D1, Workers, " +
+      "часы Render и т.п.) и кто занимает. state: ok, warn (≥80%), full, info (потребление через API не узнать). " +
+      "Сверяйся перед create_project: рецепт с исчерпанным лимитом не создастся.",
+    input: {},
+    annotations: { readOnlyHint: true },
+    async run(store) {
+      return (await collectLimits(store)).map((l) => ({
+        key: l.key,
+        label: l.label,
+        state: l.state,
+        used: l.used === null ? null : formatAmount(l.used, l.unit),
+        limit: formatAmount(l.limit, l.unit),
+        holders: l.holders,
+        note: l.note,
+        consoleUrl: l.consoleUrl,
+      }));
     },
   }),
   defineTool({

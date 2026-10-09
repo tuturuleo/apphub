@@ -63,6 +63,8 @@ export interface RecipeInfo {
   requires: ProviderId[];
   fields: RecipeField[];
   notes: string[];
+  /** Лимиты, которые рецепт расходует — по ним проверяем, влезет ли проект. */
+  needs: LimitKey[];
 }
 
 /** pending — создан, ресурсы ещё не начали создаваться. */
@@ -158,6 +160,33 @@ export type ChatBlock =
 export interface ChatResult {
   messages: ChatMessage[];
   stopReason: string | null;
+}
+
+/** Ограничение бесплатного тарифа, которое apphub может посчитать или хотя бы показать. */
+export type LimitKey =
+  | "supabase.projects"
+  | "cloudflare.d1.count"
+  | "cloudflare.d1.storage"
+  | "cloudflare.workers"
+  | "render.hours"
+  | "cloudflare.requests"
+  | "github.actions";
+
+export type LimitState = "ok" | "warn" | "full" | "info";
+
+export interface LimitItem {
+  key: LimitKey;
+  provider: ProviderId;
+  label: string;
+  /** null — потребление через API не узнать, показываем только лимит. */
+  used: number | null;
+  limit: number;
+  unit: "" | "bytes" | "hours" | "minutes" | "requests";
+  state: LimitState;
+  note: string | null;
+  /** Кто занимает (например, имена проектов Supabase). */
+  holders: string[];
+  consoleUrl: string | null;
 }
 
 export interface MonitorState {

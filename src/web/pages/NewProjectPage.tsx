@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { RecipeInfo } from "../../shared/types";
+import type { LimitItem, RecipeInfo } from "../../shared/types";
 import { ErrorNote, Loading } from "../components";
-import { errorMessage, useConnections, useCreateProject, useRecipes } from "../queries";
+import { formatAmount } from "../limits";
+import { errorMessage, useConnections, useCreateProject, useLimits, useRecipes } from "../queries";
 import { href, navigate } from "../router";
 
 const PROVIDER_NAMES: Record<string, string> = {
@@ -14,6 +15,7 @@ const PROVIDER_NAMES: Record<string, string> = {
 export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   const recipes = useRecipes();
   const connections = useConnections();
+  const limits = useLimits();
 
   if (recipes.error || connections.error) return <ErrorNote message={errorMessage(recipes.error ?? connections.error)} />;
   if (!recipes.data || !connections.data) return <Loading />;
@@ -21,7 +23,18 @@ export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   const connected = new Set(connections.data.map((c) => c.provider));
   const recipe = recipes.data.find((r) => r.id === recipeId);
 
-  if (recipe) return <RecipeForm recipe={recipe} missing={recipe.requires.filter((p) => !connected.has(p))} />;
+  // Лимиты подгружаются дольше остального — до их прихода просто не показываем предупреждения
+  const exhausted = (r: RecipeInfo) => (limits.data ?? []).filter((l) => r.needs.includes(l.key) && l.state === "full");
+
+  if (recipe) {
+    return (
+      <RecipeForm
+        recipe={recipe}
+        missing={recipe.requires.filter((p) => !connected.has(p))}
+        exhausted={exhausted(recipe)}
+      />
+    );
+  }
 
   return (
     <>
@@ -47,6 +60,11 @@ export function NewProjectPage({ recipeId }: { recipeId?: string }) {
               {missing.length > 0 && (
                 <p className="muted small">Нужно подключить: {missing.map((p) => PROVIDER_NAMES[p] ?? p).join(", ")}</p>
               )}
+              {exhausted(r).map((l) => (
+                <p key={l.key} className="small limit-full">
+                  Лимит исчерпан: {l.label}
+                </p>
+              ))}
             </li>
           );
         })}
@@ -55,7 +73,13 @@ export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   );
 }
 
-function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[] }) {
+function limitText(l: LimitItem): string {
+  const amount = l.used === null ? "" : ` — ${formatAmount(l.used, l.unit)} из ${formatAmount(l.limit, l.unit)}`;
+  const holders = l.holders.length > 0 ? ` (${l.holders.join(", ")})` : "";
+  return `${l.label}${amount}${holders}`;
+}
+
+function RecipeForm({ recipe, missing, exhausted }: { recipe: RecipeInfo; missing: string[]; exhausted: LimitItem[] }) {
   const [name, setName] = useState("");
   const [params, setParams] = useState<Record<string, string>>(() =>
     Object.fromEntries(recipe.fields.map((f) => [f.key, f.default ?? ""])),
@@ -77,6 +101,20 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
       </div>
       <p className="muted lead">{recipe.summary}</p>
 
+      {exhausted.length > 0 && missing.length === 0 && (
+        <div className="note note-error">
+          Не хватает бесплатного лимита — проект не создастся:
+          <ul>
+            {exhausted.map((l) => (
+              <li key={l.key}>
+                {limitText(l)}
+                {l.note && <div className="small">{l.note}</div>}
+              </li>
+            ))}
+          </ul>
+          <a href={href.limits}>Все лимиты</a>
+        </div>
+      )}
       {missing.length > 0 ? (
         <div className="note">
           Для этого рецепта нужно подключить: {missing.map((p) => PROVIDER_NAMES[p] ?? p).join(", ")}.{" "}
@@ -131,7 +169,7 @@ function RecipeForm({ recipe, missing }: { recipe: RecipeInfo; missing: string[]
 
           <ErrorNote message={errorMessage(create.error)} />
           <div>
-            <button className="button" type="submit" disabled={create.isPending || create.isSuccess}>
+            <button className="button" type="submit" disabled={create.isPending || create.isSuccess || exhausted.length > 0}>
               {create.isPending || create.isSuccess ? "Создаю…" : "Создать проект"}
             </button>
           </div>

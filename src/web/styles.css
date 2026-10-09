@@ -767,3 +767,52 @@ select:focus {
   outline-offset: -1px;
   border-color: transparent;
 }
+
+/* --- лимиты --- */
+
+.limit {
+  align-items: flex-start;
+}
+
+.limit .dot {
+  margin-top: 7px;
+}
+
+.limit .resource-main {
+  display: grid;
+  gap: 4px;
+}
+
+.limit-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-bar {
+  height: 6px;
+  max-width: 360px;
+  border-radius: 99px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.limit-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ok);
+}
+
+.limit-fill-warn {
+  background: var(--pending);
+}
+
+.limit-fill-full {
+  background: var(--error);
+}
+
+.limit-warn {
+  color: var(--pending);
+}
+
+.limit-full {
+  color: var(--error);
+}

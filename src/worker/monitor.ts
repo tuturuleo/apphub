@@ -3,6 +3,7 @@
 import type { MonitorResult, Project, ProjectStatusReport, Resource, ResourceKind } from "../shared/types";
 import type { Store } from "./db";
 import { projectStatus } from "./engine";
+import { collectLimits, limitTransitions } from "./limits";
 import { Telegram, escapeHtml } from "./providers/telegram";
 
 const KIND_LABEL: Record<ResourceKind, string> = {
@@ -142,6 +143,13 @@ export async function runMonitor(store: Store): Promise<MonitorResult> {
     opened += r.opened;
     resolved += r.resolved;
     messages.push(...r.messages);
+  }
+
+  // Лимиты бесплатных тарифов: пишем, когда подходим к пределу и когда снова появился запас
+  try {
+    messages.push(...(await limitTransitions(store, await collectLimits(store))));
+  } catch (e) {
+    console.error("Не удалось проверить лимиты", e);
   }
 
   await store.setMeta(LAST_RUN_KEY, String(Date.now()));

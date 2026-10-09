@@ -104,6 +104,14 @@ export class Render {
     );
   }
 
+  async listServices(ownerId: string): Promise<{ id: string; name: string; plan: string | null }[]> {
+    const items = await this.request<{ service: { id: string; name: string; serviceDetails?: { plan?: string } } }[]>(
+      "GET",
+      `/services?ownerId=${ownerId}&limit=100`,
+    );
+    return items.map(({ service }) => ({ id: service.id, name: service.name, plan: service.serviceDetails?.plan ?? null }));
+  }
+
   async deleteService(id: string): Promise<void> {
     await this.request("DELETE", `/services/${id}`);
   }

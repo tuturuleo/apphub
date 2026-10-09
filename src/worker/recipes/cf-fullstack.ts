@@ -11,6 +11,7 @@ export const cfFullstack: Recipe = {
   summary: "Статический фронтенд, API на Cloudflare Workers и база D1. Деплой на каждый push.",
   stack: ["Cloudflare Workers", "D1", "GitHub Actions"],
   requires: ["github", "cloudflare"],
+  needs: ["cloudflare.workers", "cloudflare.d1.count", "cloudflare.d1.storage"],
   fields: [
     {
       key: "visibility",

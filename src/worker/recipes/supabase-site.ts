@@ -14,6 +14,7 @@ export const supabaseSite: Recipe = {
   summary: "Статика на GitHub Pages, база и авторизация в Supabase. Сервер не нужен: доступ к данным задаётся правилами в базе.",
   stack: ["Supabase", "Postgres", "GitHub Pages", "GitHub Actions"],
   requires: ["github", "supabase"],
+  needs: ["supabase.projects"],
   fields: [
     {
       key: "region",

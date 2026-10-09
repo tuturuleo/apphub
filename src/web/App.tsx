@@ -1,5 +1,6 @@
 import { ChatPage } from "./pages/ChatPage";
 import { ConnectionsPage } from "./pages/ConnectionsPage";
+import { LimitsPage } from "./pages/LimitsPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -20,12 +21,15 @@ export function App() {
         <nav>
           <a
             href={href.projects}
-            aria-current={route.page !== "connections" && route.page !== "chat" ? "page" : undefined}
+            aria-current={["projects", "project", "new"].includes(route.page) ? "page" : undefined}
           >
             Проекты
           </a>
           <a href={href.chat} aria-current={route.page === "chat" ? "page" : undefined}>
             Ассистент
+          </a>
+          <a href={href.limits} aria-current={route.page === "limits" ? "page" : undefined}>
+            Лимиты
           </a>
           <a href={href.connections} aria-current={route.page === "connections" ? "page" : undefined}>
             Подключения
@@ -38,6 +42,7 @@ export function App() {
         {route.page === "project" && <ProjectPage id={route.id} />}
         {route.page === "connections" && <ConnectionsPage />}
         {route.page === "chat" && <ChatPage />}
+        {route.page === "limits" && <LimitsPage />}
       </main>
     </div>
   );

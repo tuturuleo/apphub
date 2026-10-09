@@ -5,6 +5,7 @@ import { projectStatus } from "./engine";
 import type { AppEnv } from "./env";
 import { runChat, type ChatMessage } from "./chat";
 import { handleMcp } from "./mcp";
+import { collectLimits } from "./limits";
 import { getLastRunAt, notify, reconcileAlerts, runMonitor } from "./monitor";
 import { ProviderError } from "./providers/errors";
 import { PROVIDERS, isProviderId, verifyConnection } from "./providers";
@@ -127,6 +128,10 @@ api.post("/chat", async (c) => {
   if (!Array.isArray(messages) || messages.length === 0) return c.json({ error: "Пустая переписка" }, 400);
   return c.json(await runChat(c.var.store, messages));
 });
+
+// --- лимиты бесплатных тарифов ---
+
+api.get("/limits", async (c) => c.json(await collectLimits(c.var.store)));
 
 // --- мониторинг ---
 

@@ -13,6 +13,7 @@ export const sheetSite: Recipe = {
   summary: "Статический сайт на GitHub Pages, данные берутся из опубликованной таблицы и обновляются по расписанию.",
   stack: ["GitHub Pages", "GitHub Actions", "Google Sheets"],
   requires: ["github"],
+  needs: ["github.actions"],
   fields: [
     {
       key: "sheetUrl",
