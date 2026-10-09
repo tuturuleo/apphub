@@ -12,11 +12,15 @@ import {
   UserError,
   createProject,
   deployProject,
+  destroyProject,
   listProjectSummaries,
-  provisionProject,
   requireProject,
   runAction,
+  settleProvisioning,
+  startProvisioning,
 } from "./service";
+
+export { ProvisionWorkflow } from "./workflow";
 
 type Ctx = { Bindings: AppEnv; Variables: { store: Store } };
 
@@ -77,16 +81,15 @@ api.post("/projects", async (c) => {
   return c.json({ id: project.id }, 201);
 });
 
-// Создание ресурсов может занять минуты (Supabase поднимает базу), поэтому идёт отдельным долгим запросом,
-// а интерфейс тем временем опрашивает журнал проекта.
+// Создание ресурсов идёт в фоне (Workflow) — отвечаем сразу, интерфейс опрашивает журнал проекта
 api.post("/projects/:id/provision", async (c) => {
-  await provisionProject(c.var.store, c.req.param("id"));
-  return c.body(null, 204);
+  await startProvisioning(c.var.store, c.req.param("id"));
+  return c.body(null, 202);
 });
 
 api.get("/projects/:id", async (c) => {
   const store = c.var.store;
-  const project = await requireProject(store, c.req.param("id"));
+  const project = await settleProvisioning(store, await requireProject(store, c.req.param("id")));
   const [resources, events, alerts] = await Promise.all([
     store.listResources(project.id),
     store.listEvents(project.id),
@@ -126,6 +129,9 @@ api.get("/monitor", async (c) => {
 
 // Ручная проверка: локально cron не срабатывает, а иногда хочется проверить сразу
 api.post("/monitor/run", async (c) => c.json(await runMonitor(c.var.store)));
+
+// Удаляет проект целиком: ресурсы у провайдеров и запись в apphub
+api.post("/projects/:id/destroy", async (c) => c.json(await destroyProject(c.var.store, c.req.param("id"))));
 
 // Удаляет проект только из apphub: репозиторий, Worker и база у провайдеров остаются.
 api.delete("/projects/:id", async (c) => {

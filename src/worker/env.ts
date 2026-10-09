@@ -1,5 +1,7 @@
 export interface AppEnv {
   DB: D1Database;
+  /** Фоновое создание ресурсов проекта (src/worker/workflow.ts). */
+  PROVISION: Workflow<{ projectId: string }>;
   /** base64, 32 байта — ключ AES-GCM для токенов провайдеров. */
   ENCRYPTION_KEY: string;
   /** Только для локальной разработки: пропускать проверку Cloudflare Access. */

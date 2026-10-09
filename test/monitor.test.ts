@@ -25,6 +25,7 @@ const report = (health: ProjectStatusReport["health"]): ProjectStatusReport => (
   health,
   runs: [
     {
+      source: "github",
       id: 1,
       name: "Deploy",
       status: "completed",

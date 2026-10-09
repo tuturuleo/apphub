@@ -137,6 +137,18 @@ export function useResourceAction(projectId: string) {
   });
 }
 
+export function useDestroyProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.destroyProject(id),
+    onSuccess: (result, id) => {
+      if (result.projectRemoved) qc.removeQueries({ queryKey: keys.project(id) });
+      else void qc.invalidateQueries({ queryKey: keys.project(id) });
+      return qc.invalidateQueries({ queryKey: keys.projects, exact: true });
+    },
+  });
+}
+
 export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({

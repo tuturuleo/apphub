@@ -84,7 +84,7 @@ const toResource = (r: ResourceRow): Resource => ({
 });
 
 export class Store {
-  constructor(private env: AppEnv) {}
+  constructor(readonly env: AppEnv) {}
 
   private get db() {
     return this.env.DB;
@@ -177,6 +177,26 @@ export class Store {
     return row ? toResource(row) : null;
   }
 
+  async setWorkflowId(id: string, workflowId: string): Promise<void> {
+    await this.db.prepare("UPDATE projects SET workflow_id = ? WHERE id = ?").bind(workflowId, id).run();
+  }
+
+  async getWorkflowId(id: string): Promise<string | null> {
+    const row = await this.db
+      .prepare("SELECT workflow_id FROM projects WHERE id = ?")
+      .bind(id)
+      .first<{ workflow_id: string | null }>();
+    return row?.workflow_id ?? null;
+  }
+
+  async lastEventAt(projectId: string): Promise<number | null> {
+    const row = await this.db
+      .prepare("SELECT MAX(created_at) AS at FROM events WHERE project_id = ?")
+      .bind(projectId)
+      .first<{ at: number | null }>();
+    return row?.at ?? null;
+  }
+
   async setProjectStatus(id: string, status: ProjectStatus, error: string | null = null): Promise<void> {
     await this.db.prepare("UPDATE projects SET status = ?, error = ? WHERE id = ?").bind(status, error, id).run();
   }
@@ -198,6 +218,10 @@ export class Store {
       : this.db.prepare("SELECT * FROM resources ORDER BY created_at");
     const { results } = await stmt.all<ResourceRow>();
     return results.map(toResource);
+  }
+
+  async deleteResource(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM resources WHERE id = ?").bind(id).run();
   }
 
   async addResource(r: Omit<Resource, "id" | "createdAt">): Promise<Resource> {

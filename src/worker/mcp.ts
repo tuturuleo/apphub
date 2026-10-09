@@ -15,8 +15,9 @@ import {
   deployProject,
   listProjectFiles,
   listProjectSummaries,
-  provisionProject,
   readProjectFiles,
+  settleProvisioning,
+  startProvisioning,
   runAction,
   updateProjectFiles,
 } from "./service";
@@ -26,13 +27,13 @@ const INSTRUCTIONS = `apphub создаёт прототипы на беспла
 Как разворачивать проект:
 1. list_recipes — выбери рецепт под задачу пользователя. Если у рецепта есть missingConnections, попроси пользователя подключить провайдера в интерфейсе apphub (страница «Подключения») — токены через MCP не передаются.
 2. Согласуй с пользователем имя проекта (станет именем репозитория и сервисов) и параметры рецепта.
-3. create_project — создаёт ресурсы у провайдеров. Это реальные репозитории и сервисы в аккаунтах пользователя, поэтому вызывай только после его явного согласия.
-4. Первый деплой идёт в GitHub Actions 1–3 минуты. Проверяй get_project, пока запуск не завершится; при ошибке открой лог по ссылке из runs и разберись с причиной.
+3. create_project — создаёт ресурсы у провайдеров. Это реальные репозитории и сервисы в аккаунтах пользователя, поэтому вызывай только после его явного согласия. Создание идёт в фоне: инструмент отвечает сразу, а status проекта в get_project меняется с provisioning на ready или failed (1–5 минут, с Supabase дольше).
+4. Первый деплой идёт 1–5 минут (GitHub Actions или Render — см. runs). Проверяй get_project, пока он не завершится; при ошибке открой лог по ссылке из runs и разберись с причиной.
 
 Своё приложение вместо демо из шаблона:
 1. Создай проект по подходящему рецепту (create_project) — он даёт рабочую инфраструктуру и деплой.
 2. get_project_files без paths — структура; затем прочитай ключевые файлы (конфиг, workflow, код, миграции), чтобы сохранить их соглашения.
-3. update_project_files — закоммить код приложения. Не ломай конфиг деплоя (wrangler.jsonc, .github/workflows, имена баз и биндингов). Схему базы меняй новыми файлами миграций, не правь применённые.
+3. update_project_files — закоммить код приложения. Не ломай конфиг деплоя (wrangler.jsonc, .github/workflows, Dockerfile, имена баз и биндингов). Схему базы меняй новыми файлами миграций, не правь применённые.
 4. Коммит запускает деплой — дождись его в get_project и проверь, что сайт открывается.
 
 Удалять ресурсы через apphub нельзя — только в консолях провайдеров.`;
@@ -53,7 +54,7 @@ async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
 async function findProject(store: Store, ref: string): Promise<Project> {
   const project = (await store.getProject(ref)) ?? (await store.getProjectByName(ref.trim().toLowerCase()));
   if (!project) throw new UserError(`Проект «${ref}» не найден`, 404);
-  return project;
+  return settleProvisioning(store, project);
 }
 
 async function projectView(store: Store, project: Project) {
@@ -90,6 +91,7 @@ async function projectView(store: Store, project: Project) {
       };
     }),
     runs: status.runs.map((run) => ({
+      source: run.source,
       name: run.name,
       status: run.status,
       conclusion: run.conclusion,
@@ -184,7 +186,7 @@ function buildServer(store: Store): McpServer {
     {
       title: "Проект",
       description:
-        "Подробности проекта: ресурсы со статусами (живой запрос к провайдерам), последние запуски GitHub Actions со ссылками на логи и журнал создания.",
+        "Подробности проекта: ресурсы со статусами (живой запрос к провайдерам), последние сборки и деплои (GitHub Actions, Render) со ссылками на логи, активные проблемы и журнал.",
       inputSchema: { project: projectRef },
       annotations: { readOnlyHint: true },
     },
@@ -197,7 +199,7 @@ function buildServer(store: Store): McpServer {
       title: "Создать проект",
       description:
         "Создаёт проект по рецепту: репозиторий, базы и сервисы в аккаунтах пользователя, секреты и деплой. " +
-        "Ждёт окончания создания (для Supabase — до нескольких минут). Вызывай только с согласия пользователя.",
+        "Создание идёт в фоне — следи за status и journal через get_project. Вызывай только с согласия пользователя.",
       inputSchema: {
         recipe: z.string().describe("id рецепта из list_recipes"),
         name: z.string().describe("имя проекта: 3–32 символа, латиница в нижнем регистре, цифры, дефис"),
@@ -208,13 +210,16 @@ function buildServer(store: Store): McpServer {
     ({ recipe, name, params }) =>
       run(async () => {
         const created = await createProject(store, { recipeId: recipe, name, params });
-        const project = await provisionProject(store, created.id);
+        const project = await startProvisioning(store, created.id);
         return {
-          ...(await projectView(store, project)),
+          id: project.id,
+          name: project.name,
+          status: project.status,
+          error: project.error,
           next:
-            project.status === "ready"
-              ? "Ресурсы созданы, первый деплой идёт в GitHub Actions. Проверь get_project через 1–2 минуты."
-              : "Создание не удалось — см. error и journal. Созданные ресурсы остались у провайдеров.",
+            project.status === "failed"
+              ? "Создание не запустилось — см. error."
+              : "Ресурсы создаются в фоне. Проверяй get_project раз в 30–60 секунд, пока status не станет ready или failed.",
         };
       }),
   );

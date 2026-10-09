@@ -2,6 +2,7 @@
 import type { Connection, ProviderId, ProviderInfo } from "../../shared/types";
 import { Cloudflare } from "./cloudflare";
 import { GitHub } from "./github";
+import { Render } from "./render";
 import { Supabase } from "./supabase";
 import { Telegram, chatLabel } from "./telegram";
 
@@ -100,6 +101,22 @@ export const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
+    id: "render",
+    name: "Render",
+    summary: "Docker-сервисы на любом языке: Python, Go, Java… Бесплатный инстанс засыпает без запросов",
+    tokenUrl: "https://dashboard.render.com/u/settings#api-keys",
+    tokenLinkLabel: "настройки аккаунта Render",
+    steps: [
+      "Если GitHub ещё не подключён к Render: Account Settings → Git Providers → GitHub, при установке приложения Render выберите All repositories — иначе Render не увидит репозитории, которые создаст apphub.",
+      "Если уже подключён, проверьте доступ в GitHub: Settings → Applications → Installed GitHub Apps → Render → Configure → Repository access: All repositories.",
+      "Account Settings → API Keys → Create API Key, скопируйте ключ сюда.",
+    ],
+    notes: [
+      "Ограничить права ключа Render нельзя — он даёт полный доступ к аккаунту и хранится только в apphub, в репозитории не попадает.",
+      "Бесплатный сервис: 512 МБ памяти, засыпает через 15 минут без запросов и просыпается около минуты, 750 часов в месяц на аккаунт.",
+    ],
+  },
+  {
     id: "telegram",
     name: "Telegram",
     summary: "Уведомления о проблемах в проектах: упал деплой, уснула база, отключено расписание",
@@ -153,6 +170,16 @@ export async function verifyConnection(
       const org = orgs[0];
       if (!org) throw new Error("В аккаунте Supabase нет ни одной организации — создайте её в панели Supabase");
       return { provider, label: org.name, accountId: org.slug, meta: {} };
+    }
+    case "render": {
+      const owners = await new Render(token).owners();
+      if (owners.length === 0) throw new Error("Ключу Render не доступно ни одно рабочее пространство");
+      if (owners.length > 1) {
+        throw new Error(
+          `Ключу доступно несколько рабочих пространств (${owners.map((o) => o.name).join(", ")}) — apphub пока работает с одним.`,
+        );
+      }
+      return { provider, label: owners[0].name, accountId: owners[0].id, meta: {} };
     }
     case "telegram": {
       const bot = new Telegram(token);

@@ -51,6 +51,18 @@ describe("renderTemplate", () => {
     expect(files.map((f) => f.content).join("\n")).not.toMatch(/%%[A-Z0-9_]+%%/);
   });
 
+  it("docker-postgres: Dockerfile, .dockerignore, миграции; секретов в репо нет", () => {
+    const files = renderTemplate("docker-postgres", { PROJECT_NAME: "py-app" });
+    const paths = files.map((f) => f.path);
+    expect(paths).toEqual(
+      expect.arrayContaining(["Dockerfile", ".dockerignore", ".gitignore", "app/main.py", "migrations/0001_notes.sql"]),
+    );
+    expect(paths.some((p) => p.startsWith(".github/"))).toBe(false);
+    const all = files.map((f) => f.content).join("\n");
+    expect(all).not.toMatch(/%%[A-Z0-9_]+%%/);
+    expect(all).not.toMatch(/postgresql:\/\/[^.\s]+:[^@\s]+@/);
+  });
+
   it("падает на незаданной переменной", () => {
     expect(() => renderTemplate("sheet-site", { PROJECT_NAME: "x" })).toThrow(/не задана переменная/);
   });

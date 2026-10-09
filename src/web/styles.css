@@ -664,3 +664,18 @@ select:focus {
 .note-warn a {
   color: var(--accent);
 }
+
+.button-danger {
+  background: transparent;
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--error-soft);
+}
+
+.note-error ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

@@ -12,6 +12,7 @@
 |---|---|---|
 | Сайт + API + SQLite | репо, Worker со статикой и `/api/*`, база D1, деплой с миграциями | GitHub, Cloudflare |
 | Сайт + Postgres | проект Supabase (Postgres + анонимный вход + RLS), Pages, миграции через Supabase CLI в Actions | GitHub, Supabase |
+| Docker-сервис + Postgres | сервис в Docker на Render (шаблон — Python/FastAPI), база в Supabase, миграции при старте | GitHub, Render, Supabase |
 | Сайт из Google-таблицы | публичное репо, GitHub Pages, пересборка по расписанию из CSV | GitHub |
 
 Рецепт = шаблон кода в `templates/<id>` + описание в `src/worker/recipes/<id>.ts`.
@@ -81,8 +82,14 @@ Workers & Pages → apphub → Settings → Domains & Routes → workers.dev →
 Скопируйте Audience (AUD) и домен команды (`<team>.cloudflareaccess.com`) в `vars` в `wrangler.jsonc`
 и задеплойте ещё раз. Без этих переменных API отвечает 503 — apphub не бывает открытым случайно.
 
-Создание идёт в два запроса: `POST /api/projects` записывает проект, `POST /api/projects/:id/provision`
-создаёт ресурсы (Supabase поднимает базу до нескольких минут), а интерфейс тем временем опрашивает журнал.
+Создание идёт в фоне: `POST /api/projects` записывает проект, `POST /api/projects/:id/provision` запускает
+Cloudflare Workflow (`src/worker/workflow.ts`) и сразу отвечает. Workflow доводит создание до конца, даже если
+вкладка закрыта или MCP-клиент перестал ждать. Проект, застрявший в «Создаётся» (процесс оборвался), сам
+переходит в «Ошибка», чтобы его можно было удалить и пересоздать.
+
+**Удаление.** «Удалить проект и ресурсы» стирает у провайдеров сервисы Render и Workers, базы D1 и Supabase,
+репозиторий (вместе с Pages) — в обратном порядке создания — и затем проект в apphub. Если что-то удалить не вышло,
+проект остаётся с оставшимися ресурсами и удаление можно повторить. Через MCP удалять нельзя.
 
 ## Мониторинг и уведомления
 
@@ -118,6 +125,7 @@ src/worker/            API на Hono
   service.ts           операции с проектами, общие для REST и MCP
   mcp.ts               MCP-сервер
   monitor.ts           мониторинг проектов и уведомления в Telegram
+  workflow.ts          фоновое создание ресурсов (Cloudflare Workflows)
   sealed-box.ts        шифрование секретов GitHub Actions (libsodium sealed box)
 src/web/               интерфейс на React
 templates/             шаблоны проектов, встраиваются в бандл Worker
@@ -126,8 +134,6 @@ migrations/            схема D1 самого apphub
 
 ## Дальше
 
-1. **Render (Docker)** — сервисы на любом языке, рецепт «Docker-сервис + Postgres».
-2. Удаление ресурсов у провайдеров вместе с проектом.
-3. **LLM-коннектор, продолжение**: OAuth для MCP (коннектор claude.ai), чат в интерфейсе на Claude API.
+1. **LLM-коннектор, продолжение**: OAuth для MCP (коннектор claude.ai), чат в интерфейсе на Claude API.
 
 Отложено: деплой самого apphub в Cloudflare.

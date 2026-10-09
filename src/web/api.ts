@@ -1,5 +1,6 @@
 import type {
   Connection,
+  DestroyResult,
   MonitorResult,
   MonitorState,
   ProjectDetails,
@@ -48,4 +49,5 @@ export const api = {
   runMonitor: () => request<MonitorResult>("POST", "/monitor/run"),
   deploy: (id: string) => request<void>("POST", `/projects/${id}/deploy`),
   deleteProject: (id: string) => request<void>("DELETE", `/projects/${id}`),
+  destroyProject: (id: string) => request<DestroyResult>("POST", `/projects/${id}/destroy`),
 };

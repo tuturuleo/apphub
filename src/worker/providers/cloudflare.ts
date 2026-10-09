@@ -67,6 +67,14 @@ export class Cloudflare {
     return this.request("POST", `${this.account}/d1/database`, { name });
   }
 
+  async deleteD1(uuid: string): Promise<void> {
+    await this.request("DELETE", `${this.account}/d1/database/${uuid}`);
+  }
+
+  async deleteWorker(script: string): Promise<void> {
+    await this.request("DELETE", `${this.account}/workers/scripts/${script}?force=true`);
+  }
+
   async getD1(uuid: string): Promise<D1Database> {
     return this.request("GET", `${this.account}/d1/database/${uuid}`);
   }

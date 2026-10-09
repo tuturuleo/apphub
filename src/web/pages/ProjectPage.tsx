@@ -5,6 +5,7 @@ import {
   errorMessage,
   useDeleteProject,
   useDeploy,
+  useDestroyProject,
   useProject,
   useProjectStatus,
   useResourceAction,
@@ -37,13 +38,17 @@ export function ProjectPage({ id }: { id: string }) {
   const provision = useStartProvision(id);
   const action = useResourceAction(id);
   const remove = useDeleteProject();
+  const destroy = useDestroyProject();
 
   if (details.error) return <ErrorNote message={errorMessage(details.error)} />;
   if (!details.data) return <Loading />;
 
   const { project, resources, events } = details.data;
   const health = new Map(status.data?.health.map((h) => [h.resourceId, h]));
-  const actionError = errorMessage(deploy.error ?? provision.error ?? action.error ?? remove.error);
+  const actionError = errorMessage(
+    deploy.error ?? provision.error ?? action.error ?? remove.error ?? destroy.error,
+  );
+  const destroyFailures = destroy.data && !destroy.data.projectRemoved ? destroy.data.failed : [];
   const statusError = errorMessage(status.error);
   // Статус возвращает алерты после сверки — они свежее, чем в деталях проекта
   const alerts = status.data?.alerts ?? details.data.alerts;
@@ -59,6 +64,20 @@ export function ProjectPage({ id }: { id: string }) {
   function removeProject() {
     if (!confirm(`Убрать «${project.name}» из apphub? Репозиторий и сервисы у провайдеров останутся.`)) return;
     remove.mutate(id, { onSuccess: () => navigate(href.projects) });
+  }
+
+  function destroyProject() {
+    const list = resources.map((r) => `• ${KIND_LABEL[r.kind]}: ${r.name}`).join("\n");
+    const typed = prompt(
+      `Будут безвозвратно удалены у провайдеров:\n${list || "• (ресурсов нет)"}\n\n` +
+        `Данные в базах и код в репозитории восстановить будет нельзя.\nВведите имя проекта «${project.name}» для подтверждения:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== project.name) {
+      alert("Имя не совпало — ничего не удалено.");
+      return;
+    }
+    destroy.mutate(id, { onSuccess: (result) => result.projectRemoved && navigate(href.projects) });
   }
 
   return (
@@ -153,14 +172,14 @@ export function ProjectPage({ id }: { id: string }) {
 
       {status.data && status.data.runs.length > 0 && (
         <section>
-          <h2 className="section-title">Запуски GitHub Actions</h2>
+          <h2 className="section-title">Сборки и деплои</h2>
           <ul className="resource-list">
             {status.data.runs.map((run) => (
-              <li key={run.id} className="resource">
+              <li key={`${run.source}:${run.id}`} className="resource">
                 <StatusDot state={RUN_STATE(run.status, run.conclusion)} />
                 <div className="resource-main">
                   <div className="resource-title">
-                    <strong>{run.name}</strong>
+                    <strong>{run.source === "github" ? `GitHub Actions · ${run.name}` : run.name}</strong>
                     <span className="muted small">
                       {run.event} · {timeAgo(run.createdAt)}
                     </span>
@@ -189,9 +208,30 @@ export function ProjectPage({ id }: { id: string }) {
       </section>
 
       <section className="danger">
-        <button className="button button-quiet" onClick={removeProject} disabled={remove.isPending}>
-          Убрать из apphub
-        </button>
+        {destroyFailures.length > 0 && (
+          <div className="note note-error">
+            Не всё удалось удалить:
+            <ul>
+              {destroyFailures.map((f) => (
+                <li key={f.resource}>
+                  {f.resource}: {f.error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="row">
+          <button className="button button-danger" onClick={destroyProject} disabled={destroy.isPending}>
+            {destroy.isPending ? "Удаляю ресурсы…" : "Удалить проект и ресурсы"}
+          </button>
+          <button className="button button-quiet" onClick={removeProject} disabled={remove.isPending || destroy.isPending}>
+            Убрать из apphub
+          </button>
+        </div>
+        <p className="muted small">
+          «Удалить» стирает репозиторий, сервисы и базы у провайдеров. «Убрать» — только из apphub, всё у провайдеров
+          останется.
+        </p>
       </section>
     </>
   );

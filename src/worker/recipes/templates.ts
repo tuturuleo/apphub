@@ -1,5 +1,6 @@
 // Шаблоны проектов лежат в /templates и встраиваются в бандл worker'а при сборке.
 // Файлы, которые должны начинаться с точки, хранятся с подчёркиванием: _github → .github, _gitignore → .gitignore.
+const DOTFILES = new Set(["_github", "_gitignore", "_dockerignore"]);
 import type { RepoFile } from "../providers/github";
 
 const sources = import.meta.glob<string>("../../../templates/**/*", {
@@ -13,7 +14,7 @@ const ROOT = "../../../templates/";
 function outputPath(path: string): string {
   return path
     .split("/")
-    .map((segment) => (segment === "_github" || segment === "_gitignore" ? `.${segment.slice(1)}` : segment))
+    .map((segment) => (DOTFILES.has(segment) ? `.${segment.slice(1)}` : segment))
     .join("/");
 }
 

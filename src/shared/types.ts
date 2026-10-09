@@ -1,6 +1,6 @@
 // Типы, общие для API (worker) и интерфейса (web).
 
-export type ProviderId = "github" | "cloudflare" | "supabase" | "telegram";
+export type ProviderId = "github" | "cloudflare" | "supabase" | "render" | "telegram";
 
 export type ResourceKind = "repo" | "site" | "service" | "database";
 
@@ -10,7 +10,8 @@ export type ResourceType =
   | "github.pages"
   | "cloudflare.worker"
   | "cloudflare.d1"
-  | "supabase.project";
+  | "supabase.project"
+  | "render.service";
 
 export type HealthState = "ok" | "pending" | "warn" | "error" | "unknown";
 
@@ -107,8 +108,10 @@ export interface ResourceHealth {
   action?: { id: ResourceActionId; label: string };
 }
 
+/** Сборка или деплой: запуск GitHub Actions либо деплой Render. */
 export interface WorkflowRun {
-  id: number;
+  source: "github" | "render";
+  id: number | string;
   name: string;
   status: string;
   conclusion: string | null;
@@ -131,6 +134,13 @@ export interface ProjectDetails {
   resources: Resource[];
   events: ProjectEvent[];
   alerts: ProjectAlert[];
+}
+
+/** Итог полного удаления проекта. */
+export interface DestroyResult {
+  deleted: string[];
+  failed: { resource: string; error: string }[];
+  projectRemoved: boolean;
 }
 
 export interface MonitorState {

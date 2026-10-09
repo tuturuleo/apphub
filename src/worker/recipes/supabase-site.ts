@@ -1,4 +1,4 @@
-import { supabaseConsole } from "../providers/supabase";
+import { createSupabaseDatabase, sleep } from "./supabase-db";
 import { renderTemplate } from "./templates";
 import type { Recipe } from "./types";
 
@@ -7,15 +7,6 @@ const REGIONS = [
   { value: "americas", label: "Америка" },
   { value: "apac", label: "Азия и Океания" },
 ];
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Пароль только из букв и цифр, чтобы без сюрпризов жить в строке подключения. */
-function generatePassword(length = 32): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-}
 
 export const supabaseSite: Recipe = {
   id: "supabase-site",
@@ -48,42 +39,16 @@ export const supabaseSite: Recipe = {
     const gh = ctx.github();
     const sb = ctx.supabase();
 
-    await ctx.log("Создаю проект Supabase…");
-    const dbPassword = generatePassword();
-    const created = await sb.client.createProject({
-      name,
-      organizationSlug: sb.organizationSlug,
-      dbPass: dbPassword,
-      regionGroup: ctx.params.region,
-    });
-    const supabaseUrl = `https://${created.ref}.supabase.co`;
-    await ctx.addResource({
-      type: "supabase.project",
-      kind: "database",
-      name: `${name} (Supabase)`,
-      externalId: created.ref,
-      url: null,
-      consoleUrl: supabaseConsole.project(created.ref),
-      meta: { apiUrl: supabaseUrl },
-    });
-
-    await ctx.log("Жду, пока Supabase поднимет базу (обычно 1–3 минуты)…");
-    const deadline = Date.now() + 6 * 60_000;
-    for (;;) {
-      const { status } = await sb.client.getProject(created.ref);
-      if (status === "ACTIVE_HEALTHY") break;
-      if (status === "INIT_FAILED") throw new Error("Supabase не смог создать проект (INIT_FAILED)");
-      if (Date.now() > deadline) throw new Error(`Supabase слишком долго поднимает базу (статус ${status})`);
-      await sleep(5000);
-    }
+    const db = await createSupabaseDatabase(ctx, ctx.params.region);
+    const supabaseUrl = db.apiUrl;
 
     let publishableKey: string | null = null;
     for (let attempt = 0; attempt < 6 && !publishableKey; attempt++) {
       if (attempt > 0) await sleep(5000);
-      publishableKey = await sb.client.publishableKey(created.ref);
+      publishableKey = await sb.client.publishableKey(db.ref);
     }
     if (!publishableKey) throw new Error("Supabase не выдал публичный ключ проекта");
-    const dbUrl = await sb.client.sessionPoolerUrl(created.ref, dbPassword);
+    const dbUrl = db.dbUrl;
 
     await ctx.log("Создаю публичный репозиторий…");
     const repo = await gh.client.createRepo({
@@ -114,7 +79,7 @@ export const supabaseSite: Recipe = {
     });
 
     await ctx.log("Настраиваю авторизацию Supabase: адрес сайта и анонимный вход…");
-    await sb.client.updateAuthConfig(created.ref, {
+    await sb.client.updateAuthConfig(db.ref, {
       site_url: pages.html_url,
       uri_allow_list: `${pages.html_url.replace(/\/$/, "")}/**`,
       external_anonymous_users_enabled: true,

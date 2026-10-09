@@ -5,25 +5,30 @@ import type {
   ProviderId,
   Resource,
   ResourceHealth,
+  ResourceType,
   WorkflowRun,
 } from "../shared/types";
 import type { Store } from "./db";
+import { ProviderError } from "./providers/errors";
 import { Cloudflare } from "./providers/cloudflare";
 import { GitHub } from "./providers/github";
+import { Render, type RenderDeploy, type RenderDeployStatus } from "./providers/render";
 import { Supabase, type SupabaseProjectStatus } from "./providers/supabase";
-import type { CloudflareAccess, GitHubAccess, Recipe, SupabaseAccess } from "./recipes/types";
+import type { CloudflareAccess, GitHubAccess, Recipe, RenderAccess, SupabaseAccess } from "./recipes/types";
 
 interface Clients {
   github: GitHubAccess | null;
   cloudflare: CloudflareAccess | null;
   supabase: SupabaseAccess | null;
+  render: RenderAccess | null;
 }
 
 async function loadClients(store: Store): Promise<Clients> {
-  const [gh, cf, sb] = await Promise.all([
+  const [gh, cf, sb, rn] = await Promise.all([
     store.getConnection("github"),
     store.getConnection("cloudflare"),
     store.getConnection("supabase"),
+    store.getConnection("render"),
   ]);
   return {
     github: gh ? { client: new GitHub(gh.token), login: gh.accountId } : null,
@@ -36,6 +41,7 @@ async function loadClients(store: Store): Promise<Clients> {
         }
       : null,
     supabase: sb ? { client: new Supabase(sb.token), organizationSlug: sb.accountId } : null,
+    render: rn ? { client: new Render(rn.token), ownerId: rn.accountId } : null,
   };
 }
 
@@ -58,6 +64,7 @@ export async function provision(store: Store, recipe: Recipe, project: Project):
       github: () => require(clients.github, "github"),
       cloudflare: () => require(clients.cloudflare, "cloudflare"),
       supabase: () => require(clients.supabase, "supabase"),
+      render: () => require(clients.render, "render"),
       log: (message) => store.addEvent(project.id, "info", message),
       addResource: (r) => store.addResource({ ...r, projectId: project.id }),
     });
@@ -92,14 +99,65 @@ const SUPABASE_PENDING: SupabaseProjectStatus[] = [
   "GOING_DOWN",
 ];
 
+const RENDER_PENDING: RenderDeployStatus[] = [
+  "created",
+  "queued",
+  "build_in_progress",
+  "update_in_progress",
+  "pre_deploy_in_progress",
+];
+const RENDER_FAILED: RenderDeployStatus[] = ["build_failed", "update_failed", "pre_deploy_failed"];
+
+function renderRun(deploy: RenderDeploy, dashboardUrl: string | null): WorkflowRun {
+  const finished = !RENDER_PENDING.includes(deploy.status);
+  return {
+    source: "render",
+    id: deploy.id,
+    name: "Render",
+    status: finished ? "completed" : "in_progress",
+    conclusion: !finished
+      ? null
+      : RENDER_FAILED.includes(deploy.status)
+        ? "failure"
+        : deploy.status === "canceled"
+          ? "cancelled"
+          : "success",
+    event: deploy.trigger ?? "deploy",
+    url: dashboardUrl ? `${dashboardUrl}/deploys/${deploy.id}` : "https://dashboard.render.com",
+    commitMessage: deploy.commit?.message.split("\n")[0] ?? null,
+    createdAt: deploy.createdAt,
+  };
+}
+
+interface CheckContext {
+  latestGithubRun: WorkflowRun | undefined;
+  renderDeploys: Map<string, RenderDeploy[]>;
+}
+
 async function checkResource(
   r: Resource,
   clients: Clients,
-  latestRun: WorkflowRun | undefined,
+  ctx: CheckContext,
 ): Promise<Omit<ResourceHealth, "resourceId">> {
   switch (r.type) {
+    case "render.service": {
+      if (!clients.render) return { state: "unknown", summary: "Render не подключён" };
+      const service = await clients.render.client.getService(r.externalId);
+      if (service.suspended === "suspended") return { state: "warn", summary: "Сервис приостановлен в Render" };
+      const deploy = ctx.renderDeploys.get(r.id)?.[0];
+      if (!deploy) return { state: "pending", summary: "Деплоев ещё не было" };
+      if (RENDER_PENDING.includes(deploy.status)) return { state: "pending", summary: "Render собирает и деплоит" };
+      if (RENDER_FAILED.includes(deploy.status)) return { state: "error", summary: `Деплой упал: ${deploy.status}` };
+      if (deploy.status === "live") {
+        return { state: "ok", summary: "Работает; бесплатный инстанс засыпает без запросов, просыпается ~минуту" };
+      }
+      return { state: "ok", summary: `Последний деплой: ${deploy.status}` };
+    }
+
     case "github.repo": {
-      const run = runHealth(latestRun);
+      // Репозиторий без GitHub Actions (сборку делает Render) — нечего проверять в запусках
+      if (!r.meta.workflow) return { state: "ok", summary: "Сборка и деплой — в Render" };
+      const run = runHealth(ctx.latestGithubRun);
       if (run.state === "error" || !clients.github) return run;
       // GitHub отключает workflow с расписанием в репо без активности дольше 60 дней
       const disabled = (await clients.github.client.listWorkflows(r.externalId)).filter(
@@ -163,19 +221,33 @@ export async function projectStatus(store: Store, resources: Resource[]): Promis
   const clients = await loadClients(store);
   const repo = resources.find((r) => r.type === "github.repo");
 
-  let runs: WorkflowRun[] = [];
-  if (repo && clients.github) {
+  let githubRuns: WorkflowRun[] = [];
+  if (repo && clients.github && repo.meta.workflow) {
     try {
-      runs = await clients.github.client.listRuns(repo.externalId);
+      githubRuns = await clients.github.client.listRuns(repo.externalId);
     } catch {
       // статус репо ниже покажет, что что-то не так
     }
   }
 
+  const renderDeploys = new Map<string, RenderDeploy[]>();
+  let renderRuns: WorkflowRun[] = [];
+  for (const r of resources.filter((x) => x.type === "render.service")) {
+    if (!clients.render) break;
+    try {
+      const deploys = await clients.render.client.listDeploys(r.externalId);
+      renderDeploys.set(r.id, deploys);
+      renderRuns = renderRuns.concat(deploys.map((d) => renderRun(d, r.consoleUrl)));
+    } catch {
+      // статус сервиса ниже покажет, что что-то не так
+    }
+  }
+
+  const ctx: CheckContext = { latestGithubRun: githubRuns[0], renderDeploys };
   const health = await Promise.all(
     resources.map(async (r): Promise<ResourceHealth> => {
       try {
-        return { resourceId: r.id, ...(await checkResource(r, clients, runs[0])) };
+        return { resourceId: r.id, ...(await checkResource(r, clients, ctx)) };
       } catch (e) {
         // Не смогли проверить (сеть, лимиты API) — это не проблема ресурса, алерт не нужен
         return {
@@ -186,6 +258,9 @@ export async function projectStatus(store: Store, resources: Resource[]): Promis
       }
     }),
   );
+  const runs = [...githubRuns, ...renderRuns]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 8);
   return { health, runs };
 }
 
@@ -210,6 +285,14 @@ export async function runResourceAction(store: Store, resource: Resource, action
 }
 
 export async function triggerDeploy(store: Store, resources: Resource[]): Promise<void> {
+  // Сервис Render собирается сам из репозитория — просим Render задеплоить последний коммит
+  const render = resources.find((r) => r.type === "render.service");
+  if (render) {
+    const rn = await store.getConnection("render");
+    if (!rn) throw new Error("Render не подключён");
+    await new Render(rn.token).triggerDeploy(render.externalId);
+    return;
+  }
   const repo = resources.find((r) => r.type === "github.repo");
   if (!repo) throw new Error("У проекта нет репозитория");
   const gh = await store.getConnection("github");
@@ -219,4 +302,48 @@ export async function triggerDeploy(store: Store, resources: Resource[]): Promis
     repo.meta.workflow ?? "deploy.yml",
     repo.meta.branch ?? "main",
   );
+}
+
+// --- удаление ---
+
+/** Порядок удаления: сначала то, что зависит от остального (сервисы), репозиторий — последним. */
+const DELETE_ORDER: ResourceType[] = [
+  "render.service",
+  "cloudflare.worker",
+  "github.pages",
+  "cloudflare.d1",
+  "supabase.project",
+  "github.repo",
+];
+
+export function deletionOrder(resources: Resource[]): Resource[] {
+  return [...resources].sort((a, b) => DELETE_ORDER.indexOf(a.type) - DELETE_ORDER.indexOf(b.type));
+}
+
+/** Удаляет ресурс у провайдера. Уже удалённый (404) — не ошибка. */
+export async function deleteResource(store: Store, r: Resource): Promise<void> {
+  const clients = await loadClients(store);
+  const need = <T>(value: T | null, provider: string): T => {
+    if (!value) throw new Error(`${provider} не подключён`);
+    return value;
+  };
+  try {
+    switch (r.type) {
+      case "github.pages":
+        return; // уходит вместе с репозиторием
+      case "github.repo":
+        return await need(clients.github, "GitHub").client.deleteRepo(r.externalId);
+      case "cloudflare.worker":
+        return await need(clients.cloudflare, "Cloudflare").client.deleteWorker(r.externalId);
+      case "cloudflare.d1":
+        return await need(clients.cloudflare, "Cloudflare").client.deleteD1(r.externalId);
+      case "supabase.project":
+        return await need(clients.supabase, "Supabase").client.deleteProject(r.externalId);
+      case "render.service":
+        return await need(clients.render, "Render").client.deleteService(r.externalId);
+    }
+  } catch (e) {
+    if (e instanceof ProviderError && e.status === 404) return;
+    throw e;
+  }
 }

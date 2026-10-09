@@ -1,7 +1,7 @@
 // Операции с проектами, общие для REST API интерфейса и MCP-сервера.
-import type { Project, ProjectSummary, Resource } from "../shared/types";
+import type { DestroyResult, Project, ProjectSummary, Resource } from "../shared/types";
 import type { Store } from "./db";
-import { missingConnections, provision, runResourceAction, triggerDeploy } from "./engine";
+import { deleteResource, deletionOrder, missingConnections, runResourceAction, triggerDeploy } from "./engine";
 import { GitHub, type RepoFile } from "./providers/github";
 import { findRecipe } from "./recipes";
 
@@ -56,15 +56,62 @@ export async function createProject(store: Store, input: NewProjectInput): Promi
   return store.createProject({ name, recipeId: recipe.id, params });
 }
 
-/** Создаёт ресурсы проекта. Может занять минуты (Supabase поднимает базу). */
-export async function provisionProject(store: Store, id: string): Promise<Project> {
+/**
+ * Запускает создание ресурсов в фоне (Cloudflare Workflow) и сразу возвращается.
+ * Прогресс виден в журнале проекта; создание не зависит от того, ждёт ли клиент ответа.
+ */
+export async function startProvisioning(store: Store, id: string): Promise<Project> {
   const project = await requireProject(store, id);
-  const recipe = findRecipe(project.recipeId);
-  if (!recipe) throw new UserError("Рецепт больше не существует");
+  if (!findRecipe(project.recipeId)) throw new UserError("Рецепт больше не существует");
   if (!(await store.claimProject(project.id))) throw new UserError("Создание уже запущено", 409);
 
-  await provision(store, recipe, { ...project, status: "provisioning" });
+  try {
+    const instance = await store.env.PROVISION.create({
+      id: `${project.id}-${Date.now()}`,
+      params: { projectId: project.id },
+    });
+    await store.setWorkflowId(project.id, instance.id);
+  } catch (e) {
+    const message = `Не удалось запустить создание: ${e instanceof Error ? e.message : String(e)}`;
+    await store.addEvent(project.id, "error", message);
+    await store.setProjectStatus(project.id, "failed", message);
+  }
   return requireProject(store, id);
+}
+
+// Проект без workflow (созданный до перехода на Workflows), не шевелившийся дольше этого, считаем прерванным
+const STALE_PROVISIONING_MS = 10 * 60_000;
+const FINISHED_WORKFLOW = new Set(["errored", "terminated", "complete", "unknown"]);
+
+/**
+ * Проект, застрявший в «Создаётся», переводит в «Ошибка»: фоновый процесс завершился, а статус не обновил
+ * (например, рантайм оборвал его). Иначе такой проект нельзя ни пересоздать, ни удалить.
+ */
+export async function settleProvisioning(store: Store, project: Project): Promise<Project> {
+  if (project.status !== "provisioning") return project;
+
+  let reason: string | null = null;
+  const workflowId = await store.getWorkflowId(project.id);
+  if (workflowId) {
+    try {
+      const { status } = await (await store.env.PROVISION.get(workflowId)).status();
+      if (FINISHED_WORKFLOW.has(status)) reason = `фоновый процесс завершился со статусом ${status}`;
+    } catch {
+      reason = "фоновый процесс не найден";
+    }
+  } else {
+    const last = (await store.lastEventAt(project.id)) ?? project.createdAt;
+    if (Date.now() - last > STALE_PROVISIONING_MS) reason = "нет движения больше 10 минут";
+  }
+  if (!reason) return project;
+
+  // Повторно читаем: процесс мог успеть записать итог, пока мы проверяли
+  const fresh = await requireProject(store, project.id);
+  if (fresh.status !== "provisioning") return fresh;
+  const message = `Создание прервалось: ${reason}. Созданные ресурсы можно удалить вместе с проектом.`;
+  await store.addEvent(project.id, "error", message);
+  await store.setProjectStatus(project.id, "failed", message);
+  return requireProject(store, project.id);
 }
 
 export async function requireProject(store: Store, id: string): Promise<Project> {
@@ -73,9 +120,53 @@ export async function requireProject(store: Store, id: string): Promise<Project>
   return project;
 }
 
+/**
+ * Удаляет проект целиком: ресурсы у провайдеров (сервисы, базы, репозиторий) и запись в apphub.
+ * Если какой-то ресурс удалить не вышло, проект остаётся с оставшимися ресурсами — можно повторить.
+ */
+export async function destroyProject(store: Store, id: string): Promise<DestroyResult> {
+  let project = await settleProvisioning(store, await requireProject(store, id));
+  if (project.status === "provisioning" || project.status === "pending") {
+    // Останавливаем фоновое создание, чтобы оно не продолжило создавать ресурсы, пока мы удаляем
+    const workflowId = await store.getWorkflowId(project.id);
+    if (workflowId) {
+      await (await store.env.PROVISION.get(workflowId)).terminate().catch(() => {});
+    }
+    await store.setProjectStatus(project.id, "failed", "Создание остановлено: проект удаляется");
+    project = await requireProject(store, id);
+  }
+
+  const result: DestroyResult = { deleted: [], failed: [], projectRemoved: false };
+  for (const resource of deletionOrder(await store.listResources(project.id))) {
+    try {
+      await deleteResource(store, resource);
+      await store.deleteResource(resource.id);
+      await store.addEvent(project.id, "info", `Удалено: ${resource.name}`);
+      result.deleted.push(resource.name);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      await store.addEvent(project.id, "error", `Не удалось удалить ${resource.name}: ${error}`);
+      result.failed.push({ resource: resource.name, error });
+    }
+  }
+
+  if (result.failed.length === 0) {
+    await store.deleteProject(project.id);
+    result.projectRemoved = true;
+  } else {
+    await store.setProjectStatus(
+      project.id,
+      "failed",
+      `Удалены не все ресурсы: ${result.failed.map((f) => f.resource).join(", ")}. Можно повторить удаление.`,
+    );
+  }
+  return result;
+}
+
 export async function listProjectSummaries(store: Store): Promise<ProjectSummary[]> {
-  const [projects, resources, alerts] = await Promise.all([
-    store.listProjects(),
+  const listed = await store.listProjects();
+  const projects = await Promise.all(listed.map((p) => settleProvisioning(store, p)));
+  const [resources, alerts] = await Promise.all([
     store.listResources(),
     store.listAlerts(),
   ]);

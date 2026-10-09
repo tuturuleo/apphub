@@ -29,7 +29,10 @@ export function deriveAlerts(resources: Resource[], report: ProjectStatusReport)
     if (h.state !== "error" && h.state !== "warn") continue;
     const r = byId.get(h.resourceId);
     if (!r) continue;
-    const url = r.type === "github.repo" && h.state === "error" ? (report.runs[0]?.url ?? r.consoleUrl) : r.consoleUrl;
+    // Упавшая сборка ведёт на её лог: GitHub Actions для репозитория, деплой Render для сервиса
+    const source = r.type === "github.repo" ? "github" : r.type === "render.service" ? "render" : null;
+    const failedRun = h.state === "error" && source ? report.runs.find((run) => run.source === source) : undefined;
+    const url = failedRun?.url ?? r.consoleUrl;
     alerts.push({
       key: `${r.id}:${h.state}`,
       message: `${KIND_LABEL[r.kind]} ${r.name}: ${h.summary}`,

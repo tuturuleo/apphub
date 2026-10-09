@@ -57,6 +57,11 @@ export class GitHub {
     return this.request("POST", "/user/repos", { ...opts, auto_init: true });
   }
 
+  /** Удаляет репозиторий вместе с Pages, Actions и секретами. Нужно право Administration. */
+  async deleteRepo(fullName: string): Promise<void> {
+    await this.request("DELETE", `/repos/${fullName}`);
+  }
+
   async getRepo(fullName: string): Promise<Repo> {
     return this.request("GET", `/repos/${fullName}`);
   }
@@ -180,6 +185,7 @@ export class GitHub {
       }[];
     }>("GET", `/repos/${fullName}/actions/runs?per_page=${limit}`);
     return data.workflow_runs.map((r) => ({
+      source: "github" as const,
       id: r.id,
       name: r.name,
       status: r.status,

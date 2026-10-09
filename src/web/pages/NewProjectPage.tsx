@@ -4,7 +4,12 @@ import { ErrorNote, Loading } from "../components";
 import { errorMessage, useConnections, useCreateProject, useRecipes } from "../queries";
 import { href, navigate } from "../router";
 
-const PROVIDER_NAMES: Record<string, string> = { github: "GitHub", cloudflare: "Cloudflare", supabase: "Supabase" };
+const PROVIDER_NAMES: Record<string, string> = {
+  github: "GitHub",
+  cloudflare: "Cloudflare",
+  supabase: "Supabase",
+  render: "Render",
+};
 
 export function NewProjectPage({ recipeId }: { recipeId?: string }) {
   const recipes = useRecipes();

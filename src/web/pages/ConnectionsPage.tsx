@@ -31,10 +31,10 @@ export function ConnectionsPage() {
         ))}
         <li className="card card-muted">
           <div className="card-row">
-            <h2>Render, Google Drive</h2>
+            <h2>Google Drive</h2>
             <span className="badge">Скоро</span>
           </div>
-          <p className="muted">Docker-сервисы на любом языке, файлы и таблицы.</p>
+          <p className="muted">Файлы и таблицы как источник данных для проектов.</p>
         </li>
       </ul>
     </>

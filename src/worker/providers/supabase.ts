@@ -111,6 +111,10 @@ export class Supabase {
     await this.request("PATCH", `/projects/${ref}/config/auth`, config);
   }
 
+  async deleteProject(ref: string): Promise<void> {
+    await this.request("DELETE", `/projects/${ref}`);
+  }
+
   async restoreProject(ref: string): Promise<void> {
     await this.request("POST", `/projects/${ref}/restore`);
   }
