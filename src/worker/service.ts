@@ -158,6 +158,7 @@ export async function requireProject(store: Store, id: string): Promise<Project>
  * Если какой-то ресурс удалить не вышло, проект остаётся с оставшимися ресурсами — можно повторить.
  */
 export async function destroyProject(store: Store, id: string): Promise<DestroyResult> {
+  await (await import("./self")).assertNotSelf(store, id);
   let project = await settleProvisioning(store, await requireProject(store, id));
   if (project.status === "provisioning" || project.status === "pending") {
     // Останавливаем фоновое создание, чтобы оно не продолжило создавать ресурсы, пока мы удаляем

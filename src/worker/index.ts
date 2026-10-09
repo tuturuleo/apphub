@@ -2,6 +2,7 @@ import { Hono, type ErrorHandler } from "hono";
 import * as auth from "./auth";
 import { AuthError, requireAuth } from "./auth";
 import { createProxy, deleteProxy, getProxy } from "./proxy";
+import { assertNotSelf, ensureSelfProject, syncProxy } from "./self";
 import { Store } from "./db";
 import { projectStatus, resourcesHealth } from "./engine";
 import type { AppEnv } from "./env";
@@ -96,10 +97,13 @@ api.post("/security/tokens", async (c) => {
 api.get("/proxy", async (c) => c.json(await getProxy(c.var.store)));
 api.post("/proxy", async (c) => {
   const body = await c.req.json<{ connectionId?: string; region?: string }>();
-  return c.json(await createProxy(c.var.store, new URL(c.req.url).origin, body), 201);
+  const proxy = await createProxy(c.var.store, new URL(c.req.url).origin, body);
+  await syncProxy(c.var.store);
+  return c.json(proxy, 201);
 });
 api.delete("/proxy", async (c) => {
   await deleteProxy(c.var.store);
+  await syncProxy(c.var.store);
   return c.body(null, 204);
 });
 api.delete("/security/tokens/:id", async (c) => {
@@ -246,7 +250,11 @@ api.get("/recipes", (c) => c.json(RECIPES.map(recipeInfo)));
 
 // --- проекты ---
 
-api.get("/projects", async (c) => c.json(await listProjectSummaries(c.var.store)));
+api.get("/projects", async (c) => {
+  // Развёрнутый apphub показывает себя среди проектов (адрес — самого Worker, не прокси)
+  await ensureSelfProject(c.var.store, new URL(c.req.url).origin).catch((e) => console.warn("apphub в проектах:", e));
+  return c.json(await listProjectSummaries(c.var.store));
+});
 
 api.post("/projects", async (c) => {
   const project = await createProject(c.var.store, await c.req.json());
@@ -331,6 +339,7 @@ api.post("/projects/:id/destroy", async (c) => c.json(await destroyProject(c.var
 
 // Удаляет проект только из apphub: репозиторий, Worker и база у провайдеров остаются.
 api.delete("/projects/:id", async (c) => {
+  await assertNotSelf(c.var.store, c.req.param("id"));
   await c.var.store.deleteProject(c.req.param("id"));
   return c.body(null, 204);
 });
