@@ -43,7 +43,9 @@ function fakeStore(secrets: Record<string, string>) {
       res("nodb", "supabase.project", { kind: "database" }),
       res("api", "render.service"),
       res("d1", "cloudflare.d1", { kind: "database" }),
+      res("shared", "postgres.external", { kind: "database", binding: { mode: "isolated", schema: "p_x", role: "r" } }),
     ],
+    getBindingSecret: async (_p: string, id: string) => (id === "shared" ? "postgresql://app_x:pw@h:5432/d" : null),
     hasResourceSecret: async (id: string) => id in secrets,
     getResourceSecret: async (id: string) => secrets[id] ?? null,
     saveWire: async (_p: string, w: Wire) => void saved.push(w),
@@ -79,6 +81,13 @@ describe("связи ресурсов", () => {
       connect(store, "p", { sourceId: "db", output: "DATABASE_URL", targetId: "api", name: "bad-name" }),
     ).rejects.toThrow(/Имя переменной/);
     await expect(connect(store, "p", { sourceId: "db", output: "NOPE", targetId: "api" })).rejects.toThrow(/нет выхода/);
+  });
+
+  it("изолированная привязка отдаёт строку пользователя проекта, а не админскую", async () => {
+    renderCalls.length = 0;
+    const { store } = fakeStore({ shared: "postgresql://postgres:ADMIN@h:5432/d" });
+    await connect(store, "p", { sourceId: "shared", output: "DATABASE_URL", targetId: "api" });
+    expect(renderCalls[0]).toBe("DATABASE_URL=postgresql://app_x:pw@h:5432/d");
   });
 
   it("выход без сохранённого секрета помечен недоступным", async () => {

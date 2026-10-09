@@ -76,11 +76,14 @@ export function ProjectPage({ id }: { id: string }) {
     deploy.mutate(undefined, { onSuccess: () => setBoostUntil(Date.now() + DEPLOY_BOOST_MS) });
   }
 
-  function unbindResource(resource: Resource) {
+  function unbindResource(resource: BoundResource) {
     const hint =
-      resource.origin === "created"
-        ? "Ресурс останется в каталоге — удалить его у провайдера можно на странице «Ресурсы»."
-        : "Ресурс останется в каталоге и у провайдера.";
+      resource.binding.mode === "isolated"
+        ? `Схема ${resource.binding.schema} со всеми данными этого проекта и его пользователь будут удалены из базы. ` +
+          "Остальные данные базы не пострадают."
+        : resource.origin === "created"
+          ? "Ресурс останется в каталоге — удалить его у провайдера можно на странице «Ресурсы»."
+          : "Ресурс останется в каталоге и у провайдера.";
     if (confirm(`Отвязать «${resource.name}» от проекта? ${hint}`)) unbind.mutate({ projectId: id, resourceId: resource.id });
   }
 
@@ -175,6 +178,12 @@ export function ProjectPage({ id }: { id: string }) {
                     <span className="kind">{KIND_LABEL[r.kind]}</span>
                     <strong>{r.name}</strong>
                     {r.origin !== "created" && <span className="tag">{ORIGIN_LABEL[r.origin]}</span>}
+                    {r.binding.mode === "isolated" && (
+                      <span className="tag" title="Своя схема и пользователь в общей базе">
+                        изолированно · {r.binding.schema}
+                      </span>
+                    )}
+                    {r.binding.mode === "shared" && <span className="tag">общие данные</span>}
                     {accountLabel(r.connectionId) && <span className="muted small">{accountLabel(r.connectionId)}</span>}
                   </div>
                   <div className="muted small">{h?.summary ?? (!settled ? "Создаётся…" : status.isPending ? "Проверяю…" : "—")}</div>
@@ -462,7 +471,10 @@ function BindFromCatalog({ projectId, bound, onDone }: { projectId: string; boun
   const resources = useResources();
   const bind = useBindResource();
   const [choice, setChoice] = useState("");
+  const [mode, setMode] = useState<"isolated" | "shared">("isolated");
   const free = (resources.data ?? []).filter((r) => !bound.includes(r.id));
+  const chosen = free.find((r) => r.id === choice);
+  const isDatabase = chosen?.type === "supabase.project" || chosen?.type === "postgres.external";
 
   return (
     <div className="card panel">
@@ -484,14 +496,37 @@ function BindFromCatalog({ projectId, bound, onDone }: { projectId: string; boun
           ))}
         </select>
       )}
+      {isDatabase && (
+        <div className="modes">
+          <label>
+            <input type="radio" checked={mode === "isolated"} onChange={() => setMode("isolated")} />
+            <span>
+              <b>Изолированно</b> — своя схема и пользователь: проект не видит чужих данных, его данные не видят другие.
+            </span>
+          </label>
+          <label>
+            <input type="radio" checked={mode === "shared"} onChange={() => setMode("shared")} />
+            <span>
+              <b>Общие данные</b> — полный доступ к базе, как у других её проектов. Для приложений над одними данными.
+            </span>
+          </label>
+          {mode === "isolated" && !chosen?.hasSecret && (
+            <div className="note">
+              Для изоляции apphub нужна строка подключения этой базы — задайте её в <a href={href.resources}>каталоге</a>.
+            </div>
+          )}
+        </div>
+      )}
       <ErrorNote message={errorMessage(bind.error)} />
       <div className="row">
         <button
           className="button"
           disabled={!choice || bind.isPending}
-          onClick={() => bind.mutate({ projectId, resourceId: choice }, { onSuccess: onDone })}
+          onClick={() =>
+            bind.mutate({ projectId, resourceId: choice, mode: isDatabase ? mode : undefined }, { onSuccess: onDone })
+          }
         >
-          Привязать
+          {bind.isPending && isDatabase && mode === "isolated" ? "Создаю схему…" : "Привязать"}
         </button>
         <button className="button button-quiet" onClick={onDone}>
           Отмена

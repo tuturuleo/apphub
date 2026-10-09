@@ -174,8 +174,16 @@ export async function destroyProject(store: Store, id: string): Promise<DestroyR
     // У провайдера удаляем только созданное apphub и больше никому не нужное; остальное — отвязываем
     const usedElsewhere = (await store.bindingCount(resource.id)) > 1;
     if (resource.origin !== "created" || usedElsewhere) {
-      await store.unbindResource(project.id, resource.id);
-      result.detached.push(resource.name);
+      try {
+        // У изолированной общей базы вместе с привязкой удаляются схема и пользователь проекта
+        const { releaseBinding } = await import("./sharing");
+        await releaseBinding(store, project.id, resource);
+        result.detached.push(resource.name);
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        await store.addEvent(project.id, "error", `Не удалось отвязать ${resource.name}: ${error}`);
+        result.failed.push({ resource: resource.name, error });
+      }
       continue;
     }
     try {

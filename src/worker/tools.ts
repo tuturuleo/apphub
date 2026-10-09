@@ -6,6 +6,7 @@ import { projectStatus } from "./engine";
 import { collectLimits, formatAmount } from "./limits";
 import { notify, reconcileAlerts, runMonitor } from "./monitor";
 import { startResourceTask } from "./builders";
+import { bindToProject } from "./sharing";
 import { connect, outputsOf } from "./wiring";
 import { PROVIDERS } from "./providers";
 import { RECIPES, recipeInfo } from "./recipes";
@@ -361,16 +362,25 @@ export const TOOLS: AppTool[] = [
   defineTool({
     name: "bind_resource",
     title: "Привязать ресурс к проекту",
-    description: "Привязывает ресурс из каталога (list_resources) к проекту — например, общую базу к нескольким проектам.",
-    input: { project: projectRef, resourceId: z.string().describe("id из list_resources") },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    async run(store, { project, resourceId }) {
+    description:
+      "Привязывает ресурс из каталога (list_resources) к проекту — например, одну базу к нескольким проектам. " +
+      "Для базы в режиме isolated apphub создаёт в ней схему и пользователя проекта; DATABASE_URL в connect_resources " +
+      "тогда отдаёт строку этого пользователя.",
+    input: {
+      project: projectRef,
+      resourceId: z.string().describe("id из list_resources"),
+      mode: z
+        .enum(["isolated", "shared"])
+        .optional()
+        .describe(
+          "для баз Postgres: isolated (по умолчанию) — своя схема и пользователь, проект не видит чужих данных; " +
+            "shared — полный доступ к данным базы",
+        ),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    async run(store, { project, resourceId, mode }) {
       const p = await findProject(store, project);
-      const resource = await store.getResource(resourceId);
-      if (!resource) throw new UserError("Ресурс не найден", 404);
-      await store.bindResource(p.id, resource.id, resource.kind);
-      await store.addEvent(p.id, "info", `Привязан ресурс: ${resource.name}`);
-      return { bound: resource.name };
+      return { result: await bindToProject(store, p.id, resourceId, mode) };
     },
   }),
   defineTool({

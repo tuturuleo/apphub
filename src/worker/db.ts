@@ -352,14 +352,37 @@ export class Store {
     ]);
   }
 
-  async bindResource(projectId: string, resourceId: string, role: string, meta: Record<string, string> = {}) {
+  /** secret — строка подключения проекта к общей базе в изолированном режиме (хранится зашифрованной). */
+  async bindResource(
+    projectId: string,
+    resourceId: string,
+    role: string,
+    meta: Record<string, string> = {},
+    secret: string | null = null,
+  ) {
     await this.db
       .prepare(
-        `INSERT INTO project_resources (project_id, resource_id, role, meta, created_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(project_id, resource_id) DO UPDATE SET role = excluded.role, meta = excluded.meta`,
+        `INSERT INTO project_resources (project_id, resource_id, role, meta, secret, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, resource_id) DO UPDATE SET
+           role = excluded.role, meta = excluded.meta, secret = excluded.secret`,
       )
-      .bind(projectId, resourceId, role, JSON.stringify(meta), Date.now())
+      .bind(
+        projectId,
+        resourceId,
+        role,
+        JSON.stringify(meta),
+        secret === null ? null : await encrypt(secret, this.env.ENCRYPTION_KEY),
+        Date.now(),
+      )
       .run();
+  }
+
+  async getBindingSecret(projectId: string, resourceId: string): Promise<string | null> {
+    const row = await this.db
+      .prepare("SELECT secret FROM project_resources WHERE project_id = ? AND resource_id = ?")
+      .bind(projectId, resourceId)
+      .first<{ secret: string | null }>();
+    return row?.secret ? decrypt(row.secret, this.env.ENCRYPTION_KEY) : null;
   }
 
   async unbindResource(projectId: string, resourceId: string): Promise<void> {

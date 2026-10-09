@@ -139,8 +139,8 @@ export const useRemoveResource = () =>
   useCatalogMutation((input: { id: string; atProvider: boolean }) => api.removeResource(input.id, input.atProvider));
 
 export const useBindResource = () =>
-  useCatalogMutation((input: { projectId: string; resourceId: string }) =>
-    api.bindResource(input.projectId, input.resourceId),
+  useCatalogMutation((input: { projectId: string; resourceId: string; mode?: "isolated" | "shared" }) =>
+    api.bindResource(input.projectId, input.resourceId, input.mode),
   );
 
 export const useNewResource = () =>

@@ -55,8 +55,8 @@ export const api = {
   addExternalPostgres: (name: string, url: string) => request<unknown>("POST", "/resources/external", { name, url }),
   removeResource: (id: string, atProvider: boolean) =>
     request<void>("DELETE", `/resources/${id}${atProvider ? "?atProvider=1" : ""}`),
-  bindResource: (projectId: string, resourceId: string) =>
-    request<void>("POST", `/projects/${projectId}/resources`, { resourceId }),
+  bindResource: (projectId: string, resourceId: string, mode?: "isolated" | "shared") =>
+    request<{ message: string }>("POST", `/projects/${projectId}/resources`, { resourceId, mode }),
   unbindResource: (projectId: string, resourceId: string) =>
     request<void>("DELETE", `/projects/${projectId}/resources/${resourceId}`),
   newResource: (projectId: string, kind: NewResourceKind, params: Record<string, string>) =>

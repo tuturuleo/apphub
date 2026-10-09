@@ -12,6 +12,7 @@ import {
   removeFromCatalog,
 } from "./catalog";
 import { runChat, type ChatMessage } from "./chat";
+import { bindToProject, releaseBinding } from "./sharing";
 import { connect, disconnect, dropWiresOf, isConsumer, outputsOf, reapplyWires } from "./wiring";
 import { handleMcp } from "./mcp";
 import { collectLimits } from "./limits";
@@ -148,14 +149,8 @@ api.delete("/resources/:id", async (c) => {
 
 // Привязка ресурса каталога к проекту (и отвязка) — общий ресурс может быть в нескольких проектах
 api.post("/projects/:id/resources", async (c) => {
-  const store = c.var.store;
-  const project = await requireProject(store, c.req.param("id"));
-  const { resourceId, role } = await c.req.json<{ resourceId?: string; role?: string }>();
-  const resource = resourceId ? await store.getResource(resourceId) : null;
-  if (!resource) throw new UserError("Ресурс не найден", 404);
-  await store.bindResource(project.id, resource.id, role?.trim() || resource.kind);
-  await store.addEvent(project.id, "info", `Привязан ресурс: ${resource.name}`);
-  return c.body(null, 204);
+  const { resourceId, mode } = await c.req.json<{ resourceId?: string; mode?: "isolated" | "shared" }>();
+  return c.json({ message: await bindToProject(c.var.store, c.req.param("id"), resourceId ?? "", mode) }, 201);
 });
 
 // Новый ресурс прямо в проекте: репозиторий, база, сервис Render, Telegram-бот. Долгое — в фоне
@@ -181,11 +176,12 @@ api.delete("/projects/:id/wires/:targetId/:name", async (c) => {
 api.delete("/projects/:id/resources/:resourceId", async (c) => {
   const store = c.var.store;
   const project = await requireProject(store, c.req.param("id"));
-  const resource = await store.getResource(c.req.param("resourceId"));
+  const resource = (await store.listResources(project.id)).find((r) => r.id === c.req.param("resourceId"));
+  if (!resource) throw new UserError("Ресурс не привязан к проекту", 404);
   // Сначала снимаем связи ресурса — иначе переменные у потребителей останутся «висеть»
-  await dropWiresOf(store, project.id, c.req.param("resourceId"));
-  await store.unbindResource(project.id, c.req.param("resourceId"));
-  if (resource) await store.addEvent(project.id, "info", `Отвязан ресурс: ${resource.name}`);
+  await dropWiresOf(store, project.id, resource.id);
+  await releaseBinding(store, project.id, resource);
+  await store.addEvent(project.id, "info", `Отвязан ресурс: ${resource.name}`);
   return c.body(null, 204);
 });
 

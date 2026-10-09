@@ -1,7 +1,7 @@
 // Связи внутри проекта: значения (выходы) одних ресурсов записываются в переменные других.
 // Выходы: строка подключения базы, адрес сервиса, токен бота. Потребители: переменные окружения Render,
 // секреты Worker, секреты GitHub Actions.
-import type { Resource, ResourceOutput, ResourceType, Wire } from "../shared/types";
+import type { BoundResource, Resource, ResourceOutput, ResourceType, Wire } from "../shared/types";
 import type { Store } from "./db";
 import { Clients } from "./engine";
 import { UserError } from "./service";
@@ -31,7 +31,9 @@ const CONSUMERS: ResourceType[] = ["render.service", "cloudflare.worker", "githu
 export const isConsumer = (r: Resource) => CONSUMERS.includes(r.type);
 
 /** Выходы ресурса с пометкой, есть ли сейчас значение. */
-export async function outputsOf(store: Store, r: Resource): Promise<ResourceOutput[]> {
+export async function outputsOf(store: Store, r: Resource | BoundResource): Promise<ResourceOutput[]> {
+  // Изолированная привязка базы: у проекта своя строка подключения
+  const isolated = "binding" in r && r.binding.mode === "isolated";
   const specs = OUTPUTS[r.type] ?? [];
   const hasSecret = specs.some((s) => s.key === "DATABASE_URL" || s.key === "TELEGRAM_BOT_TOKEN")
     ? await store.hasResourceSecret(r.id)
@@ -39,16 +41,23 @@ export async function outputsOf(store: Store, r: Resource): Promise<ResourceOutp
   return specs.map((s) => ({
     ...s,
     available:
-      s.key === "DATABASE_URL" || s.key === "TELEGRAM_BOT_TOKEN"
-        ? hasSecret
-        : s.key === "SERVICE_URL" || s.key === "SITE_URL"
-          ? !!r.url
-          : true,
+      s.key === "DATABASE_URL" && isolated
+        ? true
+        : s.key === "DATABASE_URL" || s.key === "TELEGRAM_BOT_TOKEN"
+          ? hasSecret
+          : s.key === "SERVICE_URL" || s.key === "SITE_URL"
+            ? !!r.url
+            : true,
   }));
 }
 
 /** Значение выхода. Секретные значения расшифровываются только здесь и сразу уходят потребителю. */
-async function resolveOutput(store: Store, r: Resource, key: string): Promise<string> {
+async function resolveOutput(store: Store, r: BoundResource, key: string, projectId: string): Promise<string> {
+  if (key === "DATABASE_URL" && r.binding.mode === "isolated") {
+    const url = await store.getBindingSecret(projectId, r.id);
+    if (!url) throw new UserError(`Нет строки подключения проекта к «${r.name}» — привяжите базу заново`);
+    return url;
+  }
   switch (key) {
     case "DATABASE_URL":
     case "TELEGRAM_BOT_TOKEN": {
@@ -125,16 +134,22 @@ async function removeVariable(store: Store, target: Resource, name: string): Pro
 
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
 
-async function projectResource(store: Store, projectId: string, id: string): Promise<Resource> {
+async function projectResource(store: Store, projectId: string, id: string): Promise<BoundResource> {
   const r = (await store.listResources(projectId)).find((x) => x.id === id);
   if (!r) throw new UserError("Ресурс не привязан к проекту", 404);
   return r;
 }
 
 /** Применяет связь: вычисляет значение и пишет его потребителю. Ошибка сохраняется в связи, а не теряется. */
-async function apply(store: Store, projectId: string, wire: Wire, source: Resource, target: Resource): Promise<Wire> {
+async function apply(
+  store: Store,
+  projectId: string,
+  wire: Wire,
+  source: BoundResource,
+  target: Resource,
+): Promise<Wire> {
   try {
-    await writeVariable(store, target, wire.name, await resolveOutput(store, source, wire.output));
+    await writeVariable(store, target, wire.name, await resolveOutput(store, source, wire.output, projectId));
     const done = { ...wire, appliedAt: Date.now(), error: null };
     await store.saveWire(projectId, done);
     return done;
