@@ -130,7 +130,8 @@ export async function settleProvisioning(store: Store, project: Project): Promis
       const { status } = await (await store.env.PROVISION.get(workflowId)).status();
       if (FINISHED_WORKFLOW.has(status)) reason = `фоновый процесс завершился со статусом ${status}`;
     } catch {
-      reason = "фоновый процесс не найден";
+      // Статус не прочитался — возможно, временный сбой, а создание идёт. Без подтверждения не прерываем
+      return project;
     }
   } else {
     const last = (await store.lastEventAt(project.id)) ?? project.createdAt;
