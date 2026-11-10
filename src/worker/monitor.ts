@@ -100,8 +100,16 @@ export async function reconcileAlerts(
     result.messages.push(`⚠️ ${title}\n${escapeHtml(alert.message)}${link(alert.url)}`);
   }
 
+  const resourceIds = new Set(resources.map((r) => r.id));
+  const stateById = new Map(report.health.map((h) => [h.resourceId, h.state]));
   for (const alert of active) {
     if (current.some((c) => c.key === alert.key)) continue;
+    // Ключ — `${resourceId}:${state}`; id ресурса может сам содержать двоеточие
+    const resourceId = alert.key.slice(0, alert.key.lastIndexOf(":"));
+    const state = stateById.get(resourceId);
+    // Ресурс ещё в проекте, но проверка не удалась, идёт или не дала результата — проблема не подтверждена
+    // исправленной, алерт оставляем. Закрываем при ok, при смене warn ↔ error и для удалённых ресурсов.
+    if (resourceIds.has(resourceId) && state !== "ok" && state !== "warn" && state !== "error") continue;
     if (!(await store.resolveAlert(project.id, alert.key))) continue;
     result.resolved++;
     await store.addEvent(project.id, "info", `Исправлено: ${alert.message}`);
