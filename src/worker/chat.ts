@@ -233,10 +233,27 @@ export function toOpenAi(history: ChatMessage[]): OaiMessage[] {
   return out;
 }
 
-/** Ответ модели → блоки. Рассуждения (<think>) выкидываем; у вызовов без id придумываем свой. */
+/** id всех вызовов инструментов в переписке — новые id не должны с ними совпадать. */
+function usedToolUseIds(history: ChatMessage[]): Set<string> {
+  const used = new Set<string>();
+  for (const m of history) {
+    if (typeof m.content === "string") continue;
+    for (const b of m.content as unknown as { type: string; id?: unknown }[]) {
+      if (b.type === "tool_use" && typeof b.id === "string") used.add(b.id);
+    }
+  }
+  return used;
+}
+
+/**
+ * Ответ модели → блоки. Рассуждения (<think>) выкидываем.
+ * Допустимые и ещё не занятые id провайдера сохраняем; отсутствующие, пустые после очистки
+ * и конфликтующие заменяем уникальными. Выданные id добавляются в `used`.
+ */
 export function fromOpenAi(
   message: { content: string | null; tool_calls?: unknown[] },
   step: number,
+  used: Set<string> = new Set(),
 ): {
   blocks: Anthropic.Beta.BetaContentBlockParam[];
   calls: { id: string; name: string; input: Record<string, unknown> | null }[];
@@ -244,7 +261,7 @@ export function fromOpenAi(
   const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
   const text = (message.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
   if (text) blocks.push({ type: "text", text });
-  const calls = (message.tool_calls ?? []).map((raw, i) => {
+  const parsed = (message.tool_calls ?? []).map((raw) => {
     const call = raw as {
       id?: string;
       name?: string;
@@ -260,8 +277,24 @@ export function fromOpenAi(
     } catch {
       input = null; // модель прислала битый JSON — сообщим ей об этом результатом инструмента
     }
-    const id = (call.id ?? "").replace(/[^a-zA-Z0-9_-]/g, "") || `call_${step}_${i}`;
-    return { id, name, input };
+    const rawId = typeof call.id === "string" ? call.id : "";
+    return { rawId, cleanId: rawId.replace(/[^a-zA-Z0-9_-]/g, ""), name, input };
+  });
+  // Сначала резервируем допустимые id как есть, чтобы очищенный чужой id не занял их
+  const ids: (string | undefined)[] = parsed.map((p) => {
+    if (!p.rawId || p.cleanId !== p.rawId || used.has(p.rawId)) return undefined;
+    used.add(p.rawId);
+    return p.rawId;
+  });
+  const calls = parsed.map((p, i) => {
+    let id = ids[i];
+    if (id === undefined) {
+      const base = p.cleanId || `call_${step}_${i}`;
+      id = base;
+      for (let n = 2; used.has(id); n++) id = `${base}_${n}`;
+      used.add(id);
+    }
+    return { id, name: p.name, input: p.input };
   });
   for (const c of calls) blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.input ?? {} });
   return { blocks, calls };
@@ -275,6 +308,7 @@ async function runOpenAiChat(
 ): Promise<ChatResult> {
   const tools = TOOLS.map(oaiTool);
   const messages = [...history];
+  const usedIds = usedToolUseIds(history);
   let stopReason: string | null = null;
 
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -287,7 +321,7 @@ async function runOpenAiChat(
     }
     const choice = response.choices?.[0];
     if (!choice) throw new UserError("Модель вернула пустой ответ — попробуйте ещё раз или выберите другую", 400);
-    const { blocks, calls } = fromOpenAi(choice.message, step);
+    const { blocks, calls } = fromOpenAi(choice.message, step, usedIds);
     if (blocks.length === 0) blocks.push({ type: "text", text: "(модель ничего не ответила)" });
     messages.push({ role: "assistant", content: blocks });
     stopReason = calls.length ? "tool_use" : (choice.finish_reason ?? "stop");

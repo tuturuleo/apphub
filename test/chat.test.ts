@@ -113,3 +113,79 @@ describe("ассистент на OpenAI-совместимой модели (Wo
     expect(objectArgs.calls[0].input).toEqual({ project: "x" });
   });
 });
+
+describe("уникальные id вызовов инструментов", () => {
+  type Block = { type: string; id?: string; tool_use_id?: string };
+  const call = (id?: string) => ({ ...(id === undefined ? {} : { id }), type: "function", function: { name: "list_connections", arguments: "{}" } });
+  const toolTurn = (...calls: unknown[]) => ({ choices: [{ message: { content: null, tool_calls: calls }, finish_reason: "tool_calls" }] });
+  const textTurn = { choices: [{ message: { content: "Готово.", tool_calls: [] }, finish_reason: "stop" }] };
+
+  function aiStore(replies: unknown[]) {
+    const bodies: { messages: { role: string; tool_call_id?: string; tool_calls?: { id: string }[] }[] }[] = [];
+    const s = {
+      ...store,
+      env: { AI: { run: async (_model: string, body: never) => (bodies.push(body), replies.shift()) } },
+    } as unknown as Store;
+    return { store: s, bodies };
+  }
+
+  /** id новых tool_use и tool_result по порядку, начиная с сообщения from. */
+  function newIds(messages: { content: unknown }[], from: number) {
+    const blocks = messages.slice(from).flatMap((m) => (typeof m.content === "string" ? [] : (m.content as Block[])));
+    return {
+      uses: blocks.filter((b) => b.type === "tool_use").map((b) => b.id!),
+      results: blocks.filter((b) => b.type === "tool_result").map((b) => b.tool_use_id!),
+    };
+  }
+
+  it("второй запрос с сохранённой историей не повторяет id первого", async () => {
+    const { store: s, bodies } = aiStore([toolTurn(call()), textTurn, toolTurn(call()), textTurn]);
+    const first = await runChat(s, [{ role: "user", content: "Что подключено?" }]);
+    const firstIds = newIds(first.messages, 0);
+    expect(firstIds.uses).toEqual(["call_0_0"]);
+    expect(firstIds.results).toEqual(["call_0_0"]);
+
+    const history = [...first.messages, { role: "user" as const, content: "А ещё раз?" }];
+    const snapshot = structuredClone(history);
+    const second = await runChat(s, history);
+    expect(history).toEqual(snapshot);
+    expect(second.messages.slice(0, history.length)).toEqual(snapshot);
+
+    const secondIds = newIds(second.messages, history.length);
+    expect(secondIds.uses).toHaveLength(1);
+    expect(secondIds.uses[0]).not.toBe("call_0_0");
+    expect(secondIds.results).toEqual(secondIds.uses);
+    // модель получила результат именно для нового вызова
+    const sent = bodies.at(-1)!.messages;
+    expect(sent.filter((m) => m.role === "tool").map((m) => m.tool_call_id)).toEqual(["call_0_0", secondIds.uses[0]]);
+  });
+
+  it("несколько вызовов без id в одном ответе получают разные id", async () => {
+    const { store: s } = aiStore([toolTurn(call(), call(""), call("..."), call()), textTurn]);
+    const result = await runChat(s, [{ role: "user", content: "Что подключено?" }]);
+    const { uses, results } = newIds(result.messages, 0);
+    expect(uses).toHaveLength(4);
+    expect(new Set(uses).size).toBe(4);
+    expect(results).toEqual(uses);
+  });
+
+  it("повторяющиеся id провайдера: первый сохраняется, остальные заменяются", async () => {
+    const { store: s } = aiStore([toolTurn(call("x"), call("x"), call("x_2")), textTurn]);
+    const result = await runChat(s, [{ role: "user", content: "Что подключено?" }]);
+    const { uses, results } = newIds(result.messages, 0);
+    expect(uses[0]).toBe("x");
+    expect(uses[2]).toBe("x_2");
+    expect(new Set(uses).size).toBe(3);
+    expect(results).toEqual(uses);
+  });
+
+  it("a.b и ab не сливаются после очистки: допустимый ab сохраняется", async () => {
+    const { store: s } = aiStore([toolTurn(call("a.b"), call("ab")), textTurn]);
+    const result = await runChat(s, [{ role: "user", content: "Что подключено?" }]);
+    const { uses, results } = newIds(result.messages, 0);
+    expect(uses[1]).toBe("ab");
+    expect(uses[0]).not.toBe("ab");
+    expect(uses[0]).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(results).toEqual(uses);
+  });
+});
