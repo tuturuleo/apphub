@@ -5,6 +5,7 @@ import type { BoundResource, Resource, ResourceOutput, ResourceType, Wire } from
 import type { Store } from "./db";
 import { Clients } from "./engine";
 import { isLlmProvider, llmCredentials } from "./llm";
+import { ProviderError } from "./providers/errors";
 import { UserError } from "./service";
 
 interface OutputSpec {
@@ -133,18 +134,38 @@ async function writeVariable(store: Store, target: Resource, name: string, value
   }
 }
 
+/** Удаление уже отсутствующей переменной — не ошибка: так повторная попытка после частичного сбоя проходит. */
+async function ignoreMissing(p: Promise<void>): Promise<void> {
+  try {
+    await p;
+  } catch (e) {
+    if (!(e instanceof ProviderError && e.status === 404)) throw e;
+  }
+}
+
+/** Удаляет переменную у потребителя. Для Render — с передеплоем, иначе сервис продолжит видеть старое значение. */
 async function removeVariable(store: Store, target: Resource, name: string): Promise<void> {
   const clients = new Clients(store);
   switch (target.type) {
-    case "render.service":
-      await (await clients.render(target.connectionId))?.client.deleteEnvVar(target.externalId, name);
+    case "render.service": {
+      const render = await clients.render(target.connectionId);
+      if (!render) throw new UserError("Аккаунт Render этого сервиса не подключён");
+      await ignoreMissing(render.client.deleteEnvVar(target.externalId, name));
+      await render.client.triggerDeploy(target.externalId);
       return;
-    case "cloudflare.worker":
-      await (await clients.cloudflare(target.connectionId))?.client.deleteWorkerSecret(target.externalId, name);
+    }
+    case "cloudflare.worker": {
+      const cf = await clients.cloudflare(target.connectionId);
+      if (!cf) throw new UserError("Аккаунт Cloudflare этого Worker не подключён");
+      await ignoreMissing(cf.client.deleteWorkerSecret(target.externalId, name));
       return;
-    case "github.repo":
-      await (await clients.github(target.connectionId))?.client.deleteActionsSecret(target.externalId, name);
+    }
+    case "github.repo": {
+      const gh = await clients.github(target.connectionId);
+      if (!gh) throw new UserError("Аккаунт GitHub этого репозитория не подключён");
+      await ignoreMissing(gh.client.deleteActionsSecret(target.externalId, name));
       return;
+    }
   }
 }
 
@@ -225,14 +246,17 @@ export async function reapplyWires(store: Store, projectId: string): Promise<Wir
   return results;
 }
 
-/** Убирает связь и переменную у потребителя (если она там была). */
+/**
+ * Убирает переменную у потребителя, затем связь. Если очистить переменную не удалось, связь остаётся —
+ * ошибка уходит вызывающему, и очистку можно повторить. Потребителя уже нет в проекте — снимаем только запись.
+ */
 export async function disconnect(store: Store, projectId: string, targetId: string, name: string): Promise<void> {
   const target = (await store.listResources(projectId)).find((r) => r.id === targetId);
-  if (target) await removeVariable(store, target, name).catch(() => {});
+  if (target) await removeVariable(store, target, name);
   await store.deleteWire(projectId, targetId, name);
 }
 
-/** Перед отвязкой ресурса снимаем его связи: и где он источник, и где потребитель. */
+/** Перед отвязкой ресурса снимаем его связи: и где он источник, и где потребитель. Первая ошибка прерывает отвязку. */
 export async function dropWiresOf(store: Store, projectId: string, resourceId: string): Promise<void> {
   for (const wire of await store.listWires(projectId)) {
     if (wire.sourceId === resourceId || wire.targetId === resourceId) {
